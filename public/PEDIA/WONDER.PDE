@@ -1,0 +1,86 @@
+***Civilization 2000 - Wonders Descriptions - Copyright (c) 1995 MicroProse Software, Inc. ***
+***Alteration of this file may cause the Civilopedia to Malfunction***
+
+Adam Smith's Trading Company
+Adam Smith is generally regarded as the father of modern economics. In his book "The Wealth of Nations", he analyzed the economic processes of supply and demand, and discussed how free trade and individual ambition would lead to both economic and social growth. Smith favored a political environment where the government would only become involved in business and trade to preserve justice and order. Smith's ideas of economics and the lack of government involvement form the basis of modern economic liberalism.
+
+Apollo Program
+The Apollo Program was begun by the United States in the late 1960s. Following the success of the manned orbital missions of the Mercury and Gemini missions, the destination of the Apollo program was the moon. The early Apollo flights concentrated on orbital observations of the moon, and testing the docking systems of the Apollo craft. The ultimate goal of the Apollo Program was accomplished by Apollo 11 on July 20, 1969, when Neil Armstrong became the first human to walk on the moon. Several other landings followed, the last being Apollo 17 in December, 1972. The Apollo program truly represented a "giant leap for mankind". The U.S. manned lunar missions are unparalleled feats in space exploration, and the technology originally developed for the Apollo Program was later found to be invaluable in designing future space vehicles and orbital platforms.
+
+Colossus
+The Colossus of Rhodes was a bronze statue of Helios, the Greek God of the Sun, erected near the mouth of the city harbor. It stood over 100 feet high, about two-thirds the height of the Statue of Liberty. Unfortunately, it was toppled by an earthquake only 56 years after its construction. Taking the counsel of an oracle, the city elected to leave the statue where it lay. For over 900 years, people from all over the ancient world came to Rhodes to see the Colossus. It remained where it was until 654 AD when the Muslims who plundered the city sold the statue for scrap. 
+
+Copernicus' Observatory
+Ancient astronomers originally put forth the theory that the Sun was the center of our solar system, and that the planets revolve around it. This knowledge was lost during the Dark Ages, but was re-introduced in the early 16th Century by Nicholas Copernicus. Copernicus' research and theories form the foundation for modern astronomy. Copernicus collected his data from his observatory, a small room in the spire of an East Prussian cathedral. His research methods and observations also marked the rebirth of the scientific method, and were an important step in the advance of knowledge.
+
+Cure for Cancer
+Despite the huge outlays of cash for research and study, cancer still looms as a terrifying and deadly plague on the human race. Although scientists and doctors have discovered many different forms of cancer, and have identified some of the factors that can trigger the disease, a true cure still eludes modern medical science. A cure for cancer would put an end to the source of much suffering and anguish, and allow millions of people, who would otherwise be doomed, to lead happy and productive lives.
+
+Darwin's Voyage
+Charles Darwin, the main proponent of the theory of evolution based on natural selection, built up much of his evidence for this theory during a five-year voyage around the world. His voyage aboard the H.M.S. Beagle was instrumental not only in the establishment of his theory, but also in the application of the scientific method to the study of nature. Darwin published his theory of evolution in his book "The Origin of the Species". His studies were so thorough that the scientific world never challenged his findings. However, his findings were, and continue to be, challenged on philosophical and religious grounds. Darwin's research opened many new lines of inquiry, and inspired a wave of new biological research.
+
+Eiffel Tower
+The Eiffel Tower is one of the world's most famous landmarks. Built for the Universal Exposition of 1889, the tower rises 984 feet above Paris' Champ de Mars, near the Seine River. Structural engineer Alexandre Gustave Eiffel built the tower at a cost of more than $1 million to demonstrate how steel and iron could be utilized in the construction of extremely tall buildings. The tallest building in the world when it was originally built, the Eiffel Tower drew crowds of awestruck observers from around the world. Today, it remains one of Paris' leading tourist attractions.
+
+Great Library
+The Great Library of Alexandria was one of the two most important libraries of the ancient world. It was founded around 300 BC by Ptolemy I, and was enhanced and expanded by his successors. The library attempted to obtain copies of all scrolls of any consequence, and eventually contained over 700,000 volumes. The library was destroyed by religious fanatics in 391 AD, after nearly 700 years of operation. During this period, Alexandria served as the cultural center of the Hellenistic world. Today, only part of the catalog remains, providing us with a mere hint of what treasures the library contained.
+
+Great Wall
+The Great Wall of China, a huge stone structure stretching from the Yellow Sea to the Asian deserts, was built over a period of approximately 1,800 years. The wall is 25 feet high and 12 feet thick, and runs nearly 1,500 miles across northern China. The purpose of the Great Wall was to make it difficult for raiders to escape with their booty, and thereby discourage invasion. Despite its overwhelming size, the wall was not intended to keep invaders out, since manning such a defensive structure would have been prohibitively expensive.
+
+ Hanging Gardens
+The Hanging Gardens were a distinctive feature of ancient Babylon. They were a great source of pride to the people, and were often described in accounts written by visitors to the city. Possibly built by King Nebuchadnezzar II in 600 BC, the gardens are believed to have been a remarkable feat of engineering: an ascending series of tired gardens containing all manner of trees, shrubs, and vines. The gardens were said to have looked like a large green mountain constructed of mud bricks, rising from the center of the city.
+
+Hoover Dam
+For centuries, mankind has been harnessing the power of rivers to move waterwheels for various purposes. With the advent of electrical power, it was found the rivers were also very useful for generating electricity. Hydroelectric power plants derive power from rivers by constructing dams to ensure a dependable supply of water. The overflow is then released through special chambers where the moving water turns giant turbines, generating electricity. When planned and engineered properly, this system provides an excellent power source with very limited environmental impact. The Hoover Dam, constructed on the Colorado River near Las Vegas, was one of the earliest hydroelectric power plants.
+
+Isaac Newton's College
+Sir Isaac Newton, a mathematician and physicist, is considered to be one of the greatest scientists of all time. He is credited with many important discoveries including the laws of gravity, the color spectrum of light, calculus, fluid dynamics, and an understanding of ocean tides. He also built the world's first reflecting telescope. For 32 years, he held an important teaching post at Cambridge University, where he continued his own research while instructing a generation of students.
+
+J.S. Bach's Cathedral
+Few composers were more prolific or beloved than Johann Sebastian Bach. Bach, the most well-known member of a gifted family of German musicians, was perhaps the finest composer of the baroque style of music. In his time, he wrote numerous choral and orchestral pieces. During his lifetime, he was renowned as an organist and music director of St. Thomas' Church in Leipzig, and many of his compositions were religious in nature. After his death, Bach's music gained worldwide appreciation.
+
+King Richard's Crusade
+The Crusades were a series of military expeditions by European Christians between 1095 and 1270 AD intended to recapture the Christian Holy Land from Muslim control. The most successful was the Third Crusade, in which a tremendous force led by King Richard I and Philip Augustus managed to regain control over a number of cities along the Mediterranean coast and reconstitute the Latin Kingdom in Palestine. In addition to their more altruistic goals, the Crusades also served to extend the political and religious power of the Pope over a larger area of the world. This great burst of territorial expansion led to an increase in both the population and the productivity of Europe. The ongoing wars provided lucrative business for Western European traders and merchants.
+
+Leonardo's Workshop
+Leonardo da Vinci was one of the most celebrated painters of the Italian Renaissance. His most famous works include the "Mona Lisa" and "The Last Supper". Although best known for his art, da Vinci was also an accomplished observer and designer. Preserved in his sketch books are ideas for dozens of inventions, many of them centuries ahead of their time. These include designs for such devices as draw bridges, construction equipment, parachutes, and even helicopters. His scientific and technical drawings became the basis for the development of many of these modern devices.
+
+Lighthouse
+The Pharos was a marble watch tower and lighthouse built in 280 BC on an island in the harbor of Alexandria, Egypt. Estimated to have been 300 feet high, the primary function of the lighthouse was to guide approaching ships to the harbor on an otherwise unmarked coast. Historians debate whether fires were burned on the top of the tower, or whether mirrors were used to reflect sunlight. Since ships rarely sailed along coasts at night, there was probably little need for the lighthouse after dark. The Pharos was destroyed in the 14th century, after having been damaged by several earthquakes.
+
+Magellan's Expedition
+In 1519, Ferdinand Magellan sailed from Spain with the intention was to reach the spice-rich Malouccas Islands of Indonesia by sailing west, instead of east. Although Magellan himself was killed by natives in the Philippines, his expedition went on to prove conclusively that the world was round. More importantly, it proved that the Americas were indeed a New World. Magellan's expedition was one of the great sea voyages of history, and it inspired further expeditions by other explorers. The discoveries made along the way reduced the dangers to all the sea expeditions that followed.
+
+Manhattan Project
+The Manhattan Project was the code name for an intensive and costly research effort during World War II that resulted in the development of atomic weapons. The first two such weapons, the bombs dropped on Nagasaki and Hiroshima in 1945, brought an end to the second World War. For a short time, the United States held a monopoly on atomic weapons. However, by 1949 the Soviet Union had also developed similar technology, based in part on Manhattan Project information obtained through espionage. The nuclear standoff that has resulted from this balance of power may be largely responsible for the absence of major wars since World War II.
+
+Marco Polo's Embassy
+Marco Polo was a trader, writer, and world traveler who lived in the late 13th and early 14th century. Starting as a young boy, he began traveling with his father and uncle, who were merchants and traders in Venice, along a route that would take him throughout Europe, the Middle East, and Asia. Throughout his life, he visited many places bringing back detailed information concerning lands that no European before him had visited. Polo's book, "The Travels of Marco Polo", was the only existing source of reliable information on such exotic locales as Siam, Japan, Java, Tibet, and India that existed in medieval Europe.
+
+Michelangelo's Chapel
+The beauty of Rome's Sistine Chapel has long served as a testament to the mixture of strong religious beliefs and the love of art shared by the people of Renaissance Europe. Michelangelo devoted four years to painting the mural that adorns the ceiling, a work depicting events in the book of Genesis and other Biblical stories. Few visitors to the Sistine Chapel have failed to be moved by the artist's dedication to his subject, or his feeling for the nature of human struggle, suffering, and spiritual triumph.
+
+Oracle
+In ancient Greek religion, an oracle was a priest or priestess through whom the gods spoke in response to questions. The oracle interpreted dreams, the actions of entranced persons, and physical signs found in the entrails of sacrificed animals. The most famous oracle resided in the shrine of Apollo at Delphi, located on the slopes of Mount Parnassus. This oracle was consulted for centuries by Greeks, Romans, and others about public policy and private matters. A priestess called the Pythia would, for a fee, make public predictions for the future. These ecstatic pronouncements became infamous for their ambiguity.
+
+Pyramids
+Built by the fourth dynasty of Egyptian rulers, the Pyramids represent the pinnacle of ancient Egyptian cultural achievement. Constructed on the Giza plateau outside modern-day Cairo, these structures were burial tombs and monuments for the Pharaohs, and may have taken generations and tens of thousands of workers to complete. The Pyramids are the only one of the generally accepted man-made wonders of the ancient world that remain in existence today.
+
+SETI Program
+The Search for Extraterrestrial Intelligence (SETI) was officially initiated by the United States in the latter half of the 20th Century. The purpose of the program was to find some sort of conclusive evidence that intelligent life existed beyond the confines of our planet. Employing banks of radio-telescopes and other detection equipment, SETI scans the skies hoping to find proof of extraterrestrial life in the form of radio transmissions and other activity. Although the program has yet to find such proof, the effort has produced many useful benefits to astronomy, telecommunications, and other high-tech fields.
+
+Shakespeare's Theatre
+Most of the plays of William Shakespeare were first performed on the stage of London's Globe Theatre during the 1600s. Theater offered people a diversion from their everyday lives by allowing them to enjoy comedies, tragedies, and triumphs acted out on stage. Similar theaters, such as the Comedie Francaise in Paris, and La Scala in Milan, fulfilled similar roles by offering entertainment to the citizens of their cities. Although the original Globe Theatre burned down, Shakespeare's plays are still performed in a new theater bearing his name, and in other theaters throughout the world.
+
+Statue of Liberty
+The Statue of Liberty is one of the largest statues in the world. Measuring over 300 feet tall from the base of her pedestal, the statue was originally constructed of copper plating over an iron framework and weighs over 250 metric tons. Designed by French sculptor Frederic Bartholdi, the statue with her upraised torch and the broken chains of tyranny at her feet, was presented to the United States by the French government in 1886 to commemorate 100 years of American independence. The statue itself, Liberty Island, and nearby Ellis Island became a national monument in 1924. For more than a century, the Statue of Liberty has stood at the mouth of the New York harbor. Often the first sight seen by immigrants arriving in America, Lady Liberty symbolizes the ideals of freedom upon which the United States was founded.
+
+Sun Tzu's War Academy
+One of the earliest pieces of military literature is "The Art of War", written by Chinese general Sun Tzu in the 6th century BC  This book contained a detailed explanation and analysis of the Chinese military, from weapons and strategy to rank and discipline. Sun Tzu also stressed the importance of intelligence operatives and espionage to the war effort. Because Sun Tzu has long been considered to be one of history's finest military tacticians and analysts, his teachings and strategies formed the basis of advanced military training for centuries to come.
+
+United Nations
+Established following World War II, the United Nations is an international organization dedicated to promoting world peace and security. The U.N. also attempts to achieve international cooperation in solving world problems concerning the environment, economics, and cultural issues. Although its peace keeping role is not always entirely successful, it has remained an effective forum for debate where all nations can voice their concerns on matters of worldwide importance.
+
+Women's Suffrage
+After decades of struggle, women in the United States won the right to vote in 1920 with the passage of the 19th Amendment to the U.S. Constitution. The achievement of women's suffrage was accelerated by the excellent record of women working in jobs traditionally held by men during World War I. Full voting rights were granted to women in Great Britain in 1928. Since that time, women have gained the right to vote in most countries in the developed world.

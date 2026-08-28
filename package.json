@@ -1,0 +1,21 @@
+{
+  "name": "civ2-web",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:pages": "GITHUB_PAGES=true vite build",
+    "preview": "vite preview",
+    "preview:pages": "GITHUB_PAGES=true vite preview",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "verify:public": "node tools/check-public-tree.js",
+    "verify": "npm run verify:public && npm run build && npm test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "sharp": "^0.34.5",
+    "vite": "^5.4.0"
+  }
+}

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Play the Civilization II browser recreation.">
+  <title>Civilization II — Browser Recreation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;700&family=Tinos:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/game.css">
+</head>
+<body>
+  <section id="ownership-gate" class="ownership-gate" aria-labelledby="terms-title">
+    <div class="terms-window">
+      <div class="terms-titlebar">Civilization II Browser Recreation — Player Terms</div>
+      <div class="terms-body">
+        <p class="terms-kicker">Before the game can load</p>
+        <h1 id="terms-title">Confirm that you own Civilization II MGE</h1>
+        <p>This independent project requires a legally owned copy of <em>Sid Meier’s Civilization II Multiplayer Gold Edition</em>.</p>
+        <ul>
+          <li>You confirm that you legally own or are otherwise licensed to use Civilization II Multiplayer Gold Edition.</li>
+          <li>You understand that the BSD-3-Clause licence applies only to this project’s original source code.</li>
+          <li>Original game artwork, audio, movies, text, names, and other assets are not BSD-licensed and remain the property of their respective owners.</li>
+          <li>You understand that this is an independent, non-commercial fan recreation and is not affiliated with or endorsed by MicroProse, 2K Games, Take-Two Interactive, or the original creators.</li>
+        </ul>
+        <label class="attestation">
+          <input id="ownership-confirmation" type="checkbox">
+          <span>I confirm that I legally own Civilization II Multiplayer Gold Edition and accept these terms.</span>
+        </label>
+        <div class="terms-actions">
+          <a href="./">Return to project page</a>
+          <button id="accept-terms" type="button" disabled>Accept and open game</button>
+        </div>
+        <p class="terms-note">Acceptance is stored only in this browser. Clear this site’s local data to remove it.</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="loading" hidden>
+    <h1>CIVILIZATION II</h1>
+    <div class="subtitle">Multiplayer Gold Edition</div>
+    <progress id="load-progress" value="0" max="100"></progress>
+    <div id="load-status">Loading sprites...</div>
+  </div>
+  <canvas id="game-canvas"></canvas>
+  <script type="module" src="./src/gate.js"></script>
+</body>
+</html>

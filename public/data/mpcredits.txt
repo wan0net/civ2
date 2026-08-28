@@ -1,0 +1,107 @@
+
+@CREDITS
+
+
+
+
+
+
+
+
+
+
+
+
+
+^Civilization II
+^Multiplayer Gold Edition
+
+
+
+^PRODUCER
+William F. Denman, Jr.
+
+^DESIGN
+William F. Denman, Jr.
+David Ellis
+
+^PROGRAMMING
+William F. Denman, Jr.
+Wayne Harvey
+^with
+John C. O'Neill
+Stephen L. Cox
+
+^SMEDS32 PROGRAMMING
+Lee Baldwin
+Wayne Harvey
+Paul L. Rowan
+
+^ADDITIONAL ART/ANIMATION
+Eric Peterson
+
+^MANUAL
+John Possidente
+
+^CREATIVE SERVICES
+Reiko Yamamoto
+Kathryn Lynch
+Matthew Willis
+
+^MARKETING
+Mary Lynn Slattery, U.S.
+Geraldine Burke, Europe
+
+^QA Director
+Ray Boylan
+
+^QA SUPERVISOR
+Thomas Falzone, Jr.
+
+^QA PROJECT LEADS
+Ross Edwards
+Grant Frazier
+Chris Bowling
+Rosalie Kofsky
+
+^QUALITY ASSURANCE
+Paul Ambrose
+Tim Beggs
+Matt Bittman
+Barry Caudill
+Eleanor Crawley
+Mike Davidson
+Mike Dubose
+Mark Gutknecht
+Carl Johnson
+Charles Lane
+Joe Lease
+Jason Lego
+Brandon Martin
+Rex Martin
+Tim McCraken
+Steve Purdie
+Sal Saccheri
+Rick Saffery
+Jeff Smith
+Greg Schneider
+Joe Walbeck
+Nathan Wright
+
+^ADDITIONAL QUALITY ASSURANCE
+Janis Clayton
+Tad Irish
+Alex Kim
+Eric Peterson
+Henry Schwetzke
+
+^SPECIAL THANKS
+Jeff Goodwin
+Marisa Ong
+Caroline Crossfield
+William Salit Design
+Moore and Price Design
+Anthony Constantino
+Daniel Quick, aka The Emperor
+
+@END

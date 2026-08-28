@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.DS_Store
+.playwright-mcp/
+.claude/
+.ruff_cache/
+reference/
+reference-local/
+.venv/
+test-results/
+tests/report/
+assets/
+Screenshots/
+
+# Debug/reference screenshots (not part of the codebase)
+/*.png
+/*.jpg
+assets/Gemini_Generated_Image_*

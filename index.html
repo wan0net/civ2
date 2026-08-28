@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A browser recreation of Civilization II Multiplayer Gold Edition.">
+  <title>Civilization II — Browser Recreation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;700&family=Tinos:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/site.css">
+</head>
+<body>
+  <header class="hero">
+    <nav class="nav" aria-label="Primary navigation">
+      <a class="wordmark" href="./">CIVILIZATION II</a>
+      <div><a href="#about">About</a><a href="https://github.com/wan0net/civ2">Source</a></div>
+    </nav>
+    <div class="hero-copy">
+      <p class="eyebrow">Multiplayer Gold Edition · Recreated for the browser</p>
+      <h1>Build a civilization<br>to stand the test of time.</h1>
+      <p class="lede">A graphics-first recreation of the 1998 classic, preserving its original interface, rules, music, movies, and unmistakable Windows-era character.</p>
+      <div class="actions">
+        <a class="primary" href="./game.html">Open the game</a>
+        <a class="secondary" href="#ownership">Before you play</a>
+      </div>
+    </div>
+    <div class="hero-grid" aria-hidden="true"></div>
+  </header>
+
+  <main>
+    <section id="about" class="section split">
+      <div><p class="section-label">The project</p><h2>Civ II, carefully reconstructed.</h2></div>
+      <div class="body-copy">
+        <p>This independent, non-commercial project recreates Civilization II Multiplayer Gold Edition with modern browser technology while keeping the original game’s graphics, proportions, interactions, and mechanics.</p>
+        <p>The engine uses JavaScript, Canvas 2D, Vite, and optional 2× sprite upscaling. The project is backed by a full browser regression suite and cross-checked against the running MGE game and published technical references.</p>
+      </div>
+    </section>
+
+    <section class="stats" aria-label="Project status">
+      <div><strong>251</strong><span>browser tests</span></div>
+      <div><strong>59</strong><span>original movies supported</span></div>
+      <div><strong>7</strong><span>world maps</span></div>
+      <div><strong>BSD-3</strong><span>project code</span></div>
+    </section>
+
+    <section id="ownership" class="section ownership">
+      <p class="section-label">Ownership requirement</p>
+      <h2>You must own Civilization II MGE to play.</h2>
+      <p>The browser recreation is not a copy of the original game licence. Before the game opens, you must confirm that you legally own Civilization II Multiplayer Gold Edition. The BSD-3-Clause licence covers this project’s original source code only; MicroProse/2K artwork, audio, text, names, and other game assets remain the property of their respective owners.</p>
+      <p>This fan project is not affiliated with, endorsed by, or sponsored by MicroProse, 2K Games, Take-Two Interactive, or the original creators.</p>
+      <a class="text-link" href="./game.html?terms=1">Read the player terms →</a>
+    </section>
+  </main>
+
+  <footer>
+    <span>Independent educational recreation.</span>
+    <span><a href="https://github.com/wan0net/civ2">Source code</a> · <a href="./game.html?terms=1">Player terms</a></span>
+  </footer>
+</body>
+</html>
