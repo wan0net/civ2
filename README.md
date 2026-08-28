@@ -24,7 +24,7 @@ ownership attestation locally in your browser.
 - Original city, research, Civilopedia, throne-room, advisor, score, and map UI
 - Save/load, scenarios, diplomacy, research, combat, AI, Wonders, spaceship,
   government, trade, and late-game mechanics
-- 261 Playwright browser regression tests
+- 260+ Playwright browser regression tests
 - Production build deployable beneath the GitHub Pages `/civ2/` project path
 
 This is a playable public beta, not a claim that every undocumented MGE edge

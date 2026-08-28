@@ -51,6 +51,24 @@ export class Civilization {
     /** Set of civIds with which this civ has established an embassy. */
     this.embassies = new Set();
 
+    /** Set of civIds this civilization has actually encountered. */
+    this.contacts = new Set();
+
+    /** Civilization II spaceship construction and flight state. */
+    this.spaceship = {
+      structural: 0,
+      propulsion: 0,
+      fuel: 0,
+      habitation: 0,
+      lifeSupport: 0,
+      solar: 0,
+      unassignedComponents: 0,
+      unassignedModules: 0,
+      launched: false,
+      launchYear: null,
+      arrivalYear: null,
+    };
+
     /** Custom leader name set by the player (null = use default from civs.js). */
     this.leaderNameOverride = null;
 

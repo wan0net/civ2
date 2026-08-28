@@ -597,22 +597,10 @@ export function applyAdvisorsMixin(MapRenderer) {
     }
     const sorted = [...groups.entries()].sort((a, b) => b[1] - a[1]);
 
-    // Gather visible enemy info
-    const enemyInfo = [];
-    for (const civ of gs.civs) {
-      if (civ.id === 0 || !civ.alive) continue;
-      const visCount = gs.units.filter(u => u.civId === civ.id &&
-        gs._visibility[u.row]?.[u.col] === 2).length;
-      if (visCount > 0 || gs.civs[0]?.relations.get(civ.id)) {
-        enemyInfo.push({ civ, visCount });
-      }
-    }
-
     const ROW_H = 22;
     const PW = Math.min(500, canvasW - 40);
     const forceRows = sorted.length;
-    const enemyRows = enemyInfo.length;
-    const PH = 90 + forceRows * ROW_H + 40 + enemyRows * ROW_H + 60;
+    const PH = 90 + forceRows * ROW_H + 70;
     const px = Math.round((canvasW - PW) / 2);
     const py = Math.round((canvasH - Math.min(PH, canvasH - 40)) / 2);
 
@@ -664,36 +652,6 @@ export function applyAdvisorsMixin(MapRenderer) {
     }
 
     cy += sorted.length * ROW_H + 10;
-
-    // Section: Known Enemy Forces
-    ctx.font = FONT.SMALL_BOLD; ctx.fillStyle = CLR.GOLD;
-    ctx.fillText('Known Enemy Forces', px + 10, cy + 14);
-    cy += 22;
-
-    for (let i = 0; i < enemyInfo.length; i++) {
-      const { civ, visCount } = enemyInfo[i];
-      const ry = cy + i * ROW_H;
-      const civColor = CIV_COLORS[civ.data.color ?? 1] ?? '#888';
-
-      ctx.fillStyle = i % 2 === 0 ? '#8e8e8e' : '#878787';
-      ctx.fillRect(px + 6, ry, PW - 12, ROW_H - 1);
-
-      // Color strip
-      ctx.fillStyle = civColor;
-      ctx.fillRect(px + 7, ry + 1, 4, ROW_H - 3);
-
-      ctx.font = FONT.BODY_SMALL; ctx.fillStyle = '#000000';
-      ctx.fillText(`${civ.data.plural ?? civ.data.adjective}`, px + 16, ry + 15);
-      ctx.fillText(`${visCount} visible unit${visCount !== 1 ? 's' : ''}`, px + 200, ry + 15);
-    }
-
-    if (enemyInfo.length === 0) {
-      ctx.font = FONT.BODY_SMALL; ctx.fillStyle = '#666666';
-      ctx.fillText('No enemy forces visible.', px + 16, cy + 14);
-      cy += ROW_H;
-    } else {
-      cy += enemyInfo.length * ROW_H;
-    }
 
     // Footer
     cy += 8;

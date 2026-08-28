@@ -436,7 +436,8 @@ export function applyWizardMixin(MapRenderer) {
       if (finished) return;
       finished = true;
       if (video.parentNode) video.parentNode.removeChild(video);
-      document.removeEventListener('keydown', skipOnKey);
+      document.removeEventListener('keydown', skipOnKey, true);
+      this._eventVideoSkipHandler = null;
       this._eventVideo = null;
       // Resume CD music after video
       if (wasPlayingMusic) {
@@ -448,8 +449,12 @@ export function applyWizardMixin(MapRenderer) {
 
     video.addEventListener('ended', finish);
     video.addEventListener('click', finish);
-    const skipOnKey = (e) => { if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') finish(); };
-    document.addEventListener('keydown', skipOnKey);
+    const skipOnKey = (e) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') finish();
+    };
+    document.addEventListener('keydown', skipOnKey, true);
     this._eventVideoSkipHandler = skipOnKey;
 
     video.addEventListener('canplay', async () => {
@@ -468,7 +473,7 @@ export function applyWizardMixin(MapRenderer) {
 
   MapRenderer.prototype._stopEventVideo = function() {
     if (this._eventVideoSkipHandler) {
-      document.removeEventListener('keydown', this._eventVideoSkipHandler);
+      document.removeEventListener('keydown', this._eventVideoSkipHandler, true);
       this._eventVideoSkipHandler = null;
     }
     if (this._eventVideo) {
@@ -1007,10 +1012,13 @@ export function applyWizardMixin(MapRenderer) {
   // Step 6: Select Your Tribe — 3-column grid with color swatches
   MapRenderer.prototype._drawWizardStep6 = function(ctx, cw, ch) {
     const FS = "'Times New Roman','Tinos',Times,serif";
-    const PW = 920, PH = 304;
+    // MGE's tribe chooser fits inside an 800×600 desktop. Keep the wider
+    // reconstruction at large sizes, but contract the three equal columns
+    // instead of allowing the dialog to run off either edge.
+    const PW = Math.min(920, Math.max(620, cw - 20)), PH = 304;
     const { px, py } = this._drawWizardPanel(ctx, cw, ch, PW, PH, 'Select Your Tribe');
 
-    const COL_W = 300, ROW_H = 32;
+    const COL_W = Math.floor((PW - 28) / 3), ROW_H = 32;
     const ROWS = 7;
     const startX = px + 14, startY = py + 34;
 

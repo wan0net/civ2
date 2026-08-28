@@ -247,6 +247,7 @@ export class MapRenderer {
     this._cityScreenNavRects   = [];
     this._cityScreenQueueAddMode = false;
     this._cityScreenProductionSelection = null;
+    this._pendingProductionChange = null;
     this._shiftHeld = false;
 
     // Unit action menu state
@@ -377,6 +378,7 @@ export class MapRenderer {
     this._menuItemRects = [];    // [{x,y,w,h,action,disabled}] — current dropdown
     this._menuHoverIdx  = null;  // index into _menuItemRects
     this._bugReportDialog = null;
+    this._editorTargetTile = null;
 
     // Title screen state
     this._titleScreen = false;
@@ -407,6 +409,7 @@ export class MapRenderer {
     this._throneCloseRect = null;
     this._throneUpgradeDialog = false; // show decoration choice dialog
     this._throneUpgradeRects  = [];    // clickable category buttons
+    this._pendingThroneUpgradeDialog = false;
 
     // End-game replay map
     this._replayMap       = false;
@@ -424,6 +427,7 @@ export class MapRenderer {
     this._graphicOptionsRects = [];
     this._cityReportOptionsDialog = false;
     this._cityReportOptionsRects = [];
+    this._optionsDrafts = {};
 
     // Casualty Timeline dialog
     this._casualtyDialog      = false;
@@ -493,7 +497,7 @@ export class MapRenderer {
 
   // ─── Audio helper ──────────────────────────────────────────────────────────
   _play(sfx) {
-    if (!this.audio || !sfx) return;
+    if (!this.audio || !sfx || this.gameState?._gameOptions?.soundEffects === false) return;
     if (Array.isArray(sfx)) this.audio.playRandom(sfx);
     else                    this.audio.play(sfx);
   }
@@ -533,20 +537,23 @@ export class MapRenderer {
       }
       case 'production':
         if (data.type === 'improvement') {
-          this._play(improvementSoundFor(data.id, data.improvData));
+          if (data.improvData?.isWonder || this.gameState._cityReportOptions?.showCityImprovements !== false) {
+            this._play(improvementSoundFor(data.id, data.improvData));
+          }
           // Show wonder splash for human player's wonders
           if (data.improvData?.isWonder && data.city?.civId === 0) {
             this._wonderSplash = { name: data.improvData.name, city: data.city.name, id: data.id };
-            this._startWonderVideo(data.id);
+            if (this.gameState._graphicOptions?.wonderMovies !== false) this._startWonderVideo(data.id);
           }
         } else {
-          this._play(SFX.pos);
+          const unit = UNITS[data.id];
+          if ((unit?.attack ?? 0) > 0 || this.gameState._cityReportOptions?.showNonCombatUnits !== false) this._play(SFX.pos);
         }
         break;
       case 'advance':
         this._play(advanceFanfare(ADVANCES[data.advId]));
         // Show tech discovery popup for human player (matches original Civ2 MGE)
-        if (data.civId === 0 && ADVANCES[data.advId]) {
+        if (data.civId === 0 && ADVANCES[data.advId] && this.gameState._graphicOptions?.civilopediaAdvances !== false) {
           const civAdj = this.gameState.civs[0]?.data?.adjective ?? '';
           this._advancePopup = { advId: data.advId, advName: ADVANCES[data.advId].name, civAdj };
         }
@@ -558,7 +565,11 @@ export class MapRenderer {
         }
         break;
       case 'cityDisorder':
-        this._play(SFX.cityDisorder);
+        if (this.gameState._cityReportOptions?.announceDiscoveries !== false) this._play(SFX.cityDisorder);
+        break;
+      case 'foodWarning':
+      case 'pollutionCreated':
+        this._play(SFX.feedbackWarn);
         break;
       case 'cityCapture':
         this._captureDialog = { city: data.city };
@@ -578,6 +589,7 @@ export class MapRenderer {
         break;
       case 'spaceshipLaunched':
         this._play(SFX.pos);
+        if (data.civIdx === 0) this._playEventVideo('LAUNCH.webm');
         break;
       case 'buildComplete':
         // Builder (settler/engineer) finishes road/irrigation/mine/fortress/etc.
@@ -603,7 +615,8 @@ export class MapRenderer {
         const vis = this.gameState._visibility;
         const fromVis = vis?.[data.fromRow]?.[data.fromCol] ?? 0;
         const toVis   = vis?.[data.toRow]?.[data.toCol] ?? 0;
-        if (fromVis === 2 || toVis === 2) {
+        const showEnemy = this.gameState._gameOptions?.showEnemyMoves !== false;
+        if ((data.unit.civId === 0 || showEnemy) && (fromVis === 2 || toVis === 2)) {
           this._startMoveAnim(data.unit, data.fromCol, data.fromRow, data.toCol, data.toRow);
         }
         break;
@@ -622,7 +635,7 @@ export class MapRenderer {
       }
       // ── Newly wired events ──────────────────────────────────────────────
       case 'orderRestored':
-        this._play(SFX.pos);
+        if (this.gameState._cityReportOptions?.announceOrder !== false) this._play(SFX.pos);
         break;
       case 'improvementSold':
         this._play(SFX.sell);
@@ -683,10 +696,8 @@ export class MapRenderer {
             date: new Date().toISOString().slice(0, 10),
           });
           if (go.result === 'space-win') {
-            this._playEventVideo('LAUNCH.webm', () => {
-              this._playEventVideo('WINWIN.webm');
-            });
-          } else if (go.result === 'win' || go.result === 'score-win' || go.result === 'diplomatic-win') {
+            this._playEventVideo('WINWIN.webm');
+          } else if (go.result === 'win' || go.result === 'score-win') {
             this._playEventVideo('WINWIN.webm');
           } else {
             this._playEventVideo('LOSER.webm');
@@ -703,24 +714,28 @@ export class MapRenderer {
         break;
       }
       case 'weLoveKing':
-        this._play(SFX.cheers);
+        if (this.gameState._cityReportOptions?.announceWeLoveKing !== false) this._play(SFX.cheers);
         break;
       case 'throneUpgrade':
-        // Show decoration choice dialog after a brief delay (let wonder video play first)
-        this._throneUpgradeDialog = true;
-        this._throneUpgradeRects  = [];
+        if (this.gameState._graphicOptions?.throneRoom === false) break;
+        if (this._wonderSplash) {
+          this._pendingThroneUpgradeDialog = true;
+        } else {
+          this._throneUpgradeDialog = true;
+          this._throneUpgradeRects  = [];
+        }
         break;
       case 'rushBuy':
         this._play(SFX.stockMarket);
+        break;
+      case 'turnStart':
+        if (this.gameState._gameOptions?.autoSave !== false) this._autoSaveGame();
         break;
       case 'pillage':
         this._play(SFX.explSmall);
         break;
       case 'airlift':
         this._play(SFX.pos);
-        break;
-      case 'unElection':
-        this._play(SFX.pompCirc);
         break;
       case 'cityGovernorChanged':
         this._play(SFX.menuOk);
@@ -734,7 +749,11 @@ export class MapRenderer {
     this._moveAnim = {
       unit, fromCol, fromRow, toCol, toRow,
       elapsed: 0,
-      duration: this._MOVE_ANIM_DURATION,
+      duration: unit.civId !== 0 && this.gameState._gameOptions?.noPauseEnemyMoves
+        ? 1
+        : this.gameState._gameOptions?.fastPieceSlide
+          ? Math.round(this._MOVE_ANIM_DURATION / 2)
+          : this._MOVE_ANIM_DURATION,
     };
     // Record a dust trail at the source tile
     if (!this._moveTrails) this._moveTrails = [];
@@ -993,7 +1012,7 @@ export class MapRenderer {
 
     // Dialogs & choosers
     if (this._advancePopup)    { this._advancePopup = null;                             return true; }
-    if (this._researchChooser) {
+    if (this._researchChooser && !this._wonderSplash && !this._throneUpgradeDialog) {
       this._researchChooser = false;
       this._researchGoalDialog = false;
       this._researchGoalCandidates = null;
@@ -1008,7 +1027,7 @@ export class MapRenderer {
     if (this._diplomacyScreen) { this._diplomacyScreen = false;                      return true; }
     if (this._aiPeaceProposal) { this._aiPeaceProposal = null;                          return true; }
     if (this._highCouncil)     { this._stopCouncilVideo(); this._highCouncil = false;     return true; }
-    if (this._wonderSplash)    { this._stopWonderVideo(); this._wonderSplash = null;      return true; }
+    if (this._wonderSplash)    { this._dismissWonderSplash();                              return true; }
     if (this._scenarioCivChooser)  { this._scenarioCivChooser = false; this._scenarioPending = null; return true; }
 
     // Advisors & info screens
@@ -1022,9 +1041,9 @@ export class MapRenderer {
     if (this._top5Cities)         { this._top5Cities = false;                         return true; }
     if (this._hallOfFame)         { this._hallOfFame = false;                         return true; }
     if (this._wondersList)        { this._wondersList = false;                        return true; }
-    if (this._gameOptionsDialog)       { this._gameOptionsDialog = false;                  return true; }
-    if (this._graphicOptionsDialog)    { this._graphicOptionsDialog = false;               return true; }
-    if (this._cityReportOptionsDialog) { this._cityReportOptionsDialog = false;            return true; }
+    if (this._gameOptionsDialog)       { this._gameOptionsDialog = false; delete this._optionsDrafts._gameOptions; return true; }
+    if (this._graphicOptionsDialog)    { this._graphicOptionsDialog = false; delete this._optionsDrafts._graphicOptions; return true; }
+    if (this._cityReportOptionsDialog) { this._cityReportOptionsDialog = false; delete this._optionsDrafts._cityReportOptions; return true; }
     if (this._casualtyDialog)     { this._casualtyDialog = false;                     return true; }
     if (this._spaceshipViewer)    { this._spaceshipViewer = false;                    return true; }
     if (this._palaceView)         { this._palaceView = false;                        return true; }
@@ -1044,6 +1063,20 @@ export class MapRenderer {
 
   _handleGameKey(e) {
     const gs = this.gameState;
+
+    // Cheat shortcuts precede ordinary F-key and Shift+C bindings.
+    if (this._cheatMode && e.shiftKey && e.key === 'F1') { this._executeMenuAction('cheat_unit'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F2') { this._executeMenuAction('cheat_reveal'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F3') { this._executeMenuAction('cheat_human'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F4') { this._executeMenuAction('cheat_year'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F5') { this._executeMenuAction('cheat_kill'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F6') { this._executeMenuAction('cheat_research'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F7') { this._executeMenuAction('cheat_govt'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F8') { this._executeMenuAction('cheat_terrain'); return true; }
+    if (this._cheatMode && e.shiftKey && e.key === 'F9') { this._executeMenuAction('cheat_gold'); return true; }
+    if (this._cheatMode && e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'c') {
+      e.preventDefault(); this._executeMenuAction('cheat_editcity'); return true;
+    }
 
     // Shift+C → Find City (axx0: Shift+C)
     if (e.shiftKey && e.key === 'C') { this._executeMenuAction('kd_findcity'); return true; }
@@ -1098,6 +1131,11 @@ export class MapRenderer {
     // Shift+X → Medium Zoom Out (axx0: Shift+X)
     if (e.shiftKey && e.key === 'X') { this._executeMenuAction('view_medzoomout'); return true; }
 
+    // Optional original ENTER shortcut for closing the city screen.
+    if (this._cityScreen && e.key === 'Enter' && this.gameState._gameOptions?.enterAdvances !== false) {
+      this._cityScreen = null;
+      return true;
+    }
     // City screen swallows all other keys
     if (this._cityScreen) return true;
 
@@ -1256,7 +1294,7 @@ export class MapRenderer {
         if (this._moveAnimQueue.length === 0 && this._moveAnimUnit) {
           const au = this._moveAnimUnit;
           if (this.gameState.activeUnit === au && au.movesLeft > 0 && au.status === 'active') {
-            this._moveRangeTiles = this._calcReachableTiles(au);
+            this._moveRangeTiles = this.gameState._gameOptions?.showMovePaths === false ? null : this._calcReachableTiles(au);
           } else {
             this._unitMoveMode   = false;
             this._moveRangeTiles = null;
@@ -1349,7 +1387,7 @@ export class MapRenderer {
       // Auto-enter move mode when a new unit becomes active
       if (au && au.movesLeft > 0 && au.status === 'active') {
         this._unitMoveMode   = true;
-        this._moveRangeTiles = this._calcReachableTiles(au);
+        this._moveRangeTiles = this.gameState._gameOptions?.showMovePaths === false ? null : this._calcReachableTiles(au);
         this._unitMenu       = null;
       }
       // Flash city box when no units left to move
@@ -1524,17 +1562,17 @@ export class MapRenderer {
     // High Council — click anywhere to dismiss
     if (this._highCouncil) { this._stopCouncilVideo(); this._highCouncil = false; return; }
 
-    // Advance discovery popup — click anywhere to dismiss
-    if (this._advancePopup) { this._advancePopup = null; return; }
-
     // Wonder splash — click anywhere to dismiss
-    if (this._wonderSplash) { this._stopWonderVideo(); this._wonderSplash = null; return; }
+    if (this._wonderSplash) { this._dismissWonderSplash(); return; }
 
     // Scenario civ chooser
     if (this._scenarioCivChooser) { this._handleScenarioCivClick(px, py); return; }
 
     // Throne upgrade dialog — pick a category
     if (this._throneUpgradeDialog) { this._handleThroneUpgradeClick(px, py); return; }
+
+    // Advance discovery popup — click anywhere to dismiss
+    if (this._advancePopup) { this._advancePopup = null; return; }
 
     // Palace view — click anywhere to close
     if (this._palaceView) { this._palaceView = false; return; }
@@ -1697,15 +1735,26 @@ export class MapRenderer {
       if (this[dialogFlag] && this[rectsKey]) {
         const hit = this[rectsKey].find(r => px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h);
         if (hit) {
-          if (hit.key === '_close') {
+          if (hit.key === '_cancel') {
+            delete this._optionsDrafts[optsKey];
             this[dialogFlag] = false;
-          } else {
-            const opts = this.gameState[optsKey] ?? (this.gameState[optsKey] = {});
-            opts[hit.key] = !opts[hit.key];
-            // Sync HD sprites toggle with SpriteManager
-            if (hit.key === 'hdSprites') {
-              this.sprites.setHdMode(!!opts[hit.key]);
+          } else if (hit.key === '_ok') {
+            const oldOptions = this.gameState[optsKey] ?? {};
+            const options = { ...(this._optionsDrafts[optsKey] ?? oldOptions) };
+            this.gameState[optsKey] = options;
+            delete this._optionsDrafts[optsKey];
+            this[dialogFlag] = false;
+            if (optsKey === '_graphicOptions' && oldOptions.hdSprites !== options.hdSprites) {
+              this.sprites.setHdMode(!!options.hdSprites);
             }
+            if (optsKey === '_gameOptions' && oldOptions.music !== options.music) {
+              this._currentMusicEra = null;
+              if (options.music) this._startEraMusic(this.gameState.year);
+              else this.audio?.stopMusic?.(0);
+            }
+          } else {
+            const opts = this._optionsDrafts[optsKey] ?? (this._optionsDrafts[optsKey] = { ...(this.gameState[optsKey] ?? {}) });
+            opts[hit.key] = !opts[hit.key];
           }
           return;
         }
@@ -1722,7 +1771,9 @@ export class MapRenderer {
     // Spaceships Viewer dialog
     if (this._spaceshipViewer && this._spaceshipViewerRects) {
       const hit = this._spaceshipViewerRects.find(r => px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h);
-      if (hit && hit.key === '_close') { this._spaceshipViewer = false; }
+      if (hit?.key === '_close') this._spaceshipViewer = false;
+      else if (hit?.key === '_launch') this.gameState.launchSpaceship(0);
+      else if (hit?.key?.startsWith('_assign:')) this.gameState.assignSpaceshipPart(0, hit.key.slice(8));
       return; // block click-through to map
     }
 
@@ -1834,6 +1885,17 @@ export class MapRenderer {
     if (gs.activeCivIdx !== 0) return;
 
     const { col, row } = tile;
+    this._editorTargetTile = { col, row };
+
+    // Both MGE interaction modes open an owned city before considering units
+    // or the generic tile-information action.
+    const city = gs.cityAt(col, row);
+    if (city && city.civId === 0) {
+      this._cityScreen       = city;
+      this._cityScreenTab    = 'units';
+      this._cityScreenScroll = 0;
+      return;
+    }
 
     // In View Pieces mode, show info popup instead of activating units
     if (this._viewOnlyMode) {
@@ -1861,22 +1923,17 @@ export class MapRenderer {
         // Different tile — select unit and enter move mode by default
         unit = friendlies.find(u => u === gs.activeUnit) ?? friendlies[0];
         gs.selectUnit(unit);
+        if (gs._gameOptions?.tutorialHelp) {
+          gs._addLog(`Tip: click ${UNITS[unit.typeId]?.name ?? 'the unit'} again for its orders menu.`);
+        }
         if (unit.movesLeft > 0) {
           this._unitMoveMode   = true;
-          this._moveRangeTiles = this._calcReachableTiles(unit);
+          this._moveRangeTiles = this.gameState._gameOptions?.showMovePaths === false ? null : this._calcReachableTiles(unit);
         }
       }
       return;
     }
 
-    // Own city with no units on it → open city screen
-    const city = gs.cityAt(col, row);
-    if (city && city.civId === 0) {
-      this._cityScreen      = city;
-      this._cityScreenTab   = 'units';
-      this._cityScreenScroll = 0;
-      return;
-    }
   }
 
   // ─── Unit action menu ──────────────────────────────────────────────────────
@@ -2017,7 +2074,7 @@ export class MapRenderer {
     switch (id) {
       case 'move':
         this._unitMoveMode   = true;
-        this._moveRangeTiles = this._calcReachableTiles(unit);
+        this._moveRangeTiles = this.gameState._gameOptions?.showMovePaths === false ? null : this._calcReachableTiles(unit);
         break;
       case 'goto':
         this._gotoMode = true;
@@ -2678,7 +2735,7 @@ export class MapRenderer {
     if (this._wizard) this._drawNewGameWizard(ctx, canvasW, canvasH);
 
     // Game-over screen
-    if (!this._wizard && !this._retireStage && this.gameState.gameOver) this._drawGameOver(ctx, canvasW, canvasH);
+    if (!this._wizard && !this._retireStage && !this._replayMap && this.gameState.gameOver) this._drawGameOver(ctx, canvasW, canvasH);
 
     // Modern support feature, intentionally topmost so its controls cannot be
     // obscured by the MGE screens included in the captured report.
@@ -2687,7 +2744,7 @@ export class MapRenderer {
 
   _drawGameOver(ctx, canvasW, canvasH) {
     const go = this.gameState.gameOver;
-    const win = go.result === 'win' || go.result === 'score-win' || go.result === 'space-win' || go.result === 'diplomatic-win';
+    const win = go.result === 'win' || go.result === 'score-win' || go.result === 'space-win';
 
 
 
@@ -2707,10 +2764,8 @@ export class MapRenderer {
     const title = go.result === 'win'             ? 'VICTORY!'
                 : go.result === 'score-win'        ? 'SCORE VICTORY!'
                 : go.result === 'space-win'        ? 'SPACE VICTORY!'
-                : go.result === 'diplomatic-win'   ? 'DIPLOMATIC VICTORY!'
                 : go.result === 'lose'             ? 'DEFEAT'
                 : go.result === 'space-lose'       ? 'SPACE DEFEAT'
-                : go.result === 'diplomatic-lose'  ? 'DIPLOMATIC DEFEAT'
                 : 'SCORE DEFEAT';
     ctx.fillStyle = win ? CLR.WIN_COLOR : CLR.LOSS_COLOR;
     ctx.font = FONT.TITLE_HUGE;
@@ -2727,10 +2782,6 @@ export class MapRenderer {
       ? 'YOUR CIVILIZATION REACHED THE STARS!'
       : go.result === 'space-lose'
       ? 'An enemy civilization reached Alpha Centauri first…'
-      : go.result === 'diplomatic-win'
-      ? 'The United Nations has elected you World Leader!'
-      : go.result === 'diplomatic-lose'
-      ? 'A rival civilization was elected World Leader.'
       : 'The year is 2050 A.D. — a rival civilization surpassed you.';
     ctx.font = FONT.LABEL_TIMES;
     this._panelText(ctx, sub, canvasW / 2, py + 100);
@@ -2747,14 +2798,14 @@ export class MapRenderer {
     // Replay Map button — Win95 style
     const RBW = 120, RBH = 24;
     const rbx = Math.round(canvasW / 2 - RBW / 2);
-    const rby = py + 168;
+    const rby = py + 164;
     this._drawWin95Button(ctx, rbx, rby, RBW, RBH, 'Replay Map');
     this._gameOverReplayRect = { x: rbx, y: rby, w: RBW, h: RBH };
 
     // New Game button — Win95 style
     const BW = 140, BH = 28;
     const bx = Math.round(canvasW / 2 - BW / 2);
-    const by = py + PH - 44;
+    const by = py + PH - 36;
     ctx.fillStyle = CLR.WIN95_FACE; ctx.fillRect(bx, by, BW, BH);
     ctx.fillStyle = CLR.WIN95_LIGHT; ctx.fillRect(bx, by, BW, 1); ctx.fillRect(bx, by, 1, BH);
     ctx.fillStyle = CLR.WIN95_SHADOW; ctx.fillRect(bx, by + BH - 1, BW, 1); ctx.fillRect(bx + BW - 1, by, 1, BH);
@@ -3101,7 +3152,8 @@ export class MapRenderer {
          return;
        }
 
-      const disabled = !!(item.needsUnit && !(au && au.civId === 0));
+      const disabled = !!(item.needsUnit && !(au && au.civId === 0)) ||
+        (!!item.action?.startsWith('cheat_') && item.action !== 'cheat_toggle' && !this._cheatMode);
       const hovered  = !disabled && this._menuHoverIdx === this._menuItemRects.length;
 
       if (hovered) {
@@ -3191,14 +3243,17 @@ export class MapRenderer {
       case 'game_options':
         this._gameOptionsDialog = true;
         this._gameOptionsRects = [];
+        this._optionsDrafts._gameOptions = { ...(this.gameState._gameOptions ?? {}) };
         return true;
       case 'game_graphicoptions':
         this._graphicOptionsDialog = true;
         this._graphicOptionsRects = [];
+        this._optionsDrafts._graphicOptions = { ...(this.gameState._graphicOptions ?? {}) };
         return true;
       case 'game_cityreportoptions':
         this._cityReportOptionsDialog = true;
         this._cityReportOptionsRects = [];
+        this._optionsDrafts._cityReportOptions = { ...(this.gameState._cityReportOptions ?? {}) };
         return true;
       case 'game_music':
         this._showMusicPicker();
@@ -3214,6 +3269,12 @@ export class MapRenderer {
 
     switch (action) {
       case 'view_center':
+        if (au) this.centerOn(au.col, au.row, this._canvasW, this._canvasH);
+        return true;
+      case 'view_arrange':
+        this._tileInfoPopup = null;
+        this._unitMenu = null;
+        this._openMenu = null;
         if (au) this.centerOn(au.col, au.row, this._canvasW, this._canvasH);
         return true;
       case 'view_zoomin':
@@ -3363,6 +3424,10 @@ export class MapRenderer {
 
   _executeAdvisorsAction(action) {
     switch (action) {
+      case 'adv_chat':
+        this._diplomacyScreen = true;
+        this._diplomacyScreenRects = [];
+        return true;
       case 'adv_science':
         this._scienceAdvisor      = !this._scienceAdvisor;
         this._scienceAdvisorRects = [];
@@ -3391,6 +3456,10 @@ export class MapRenderer {
         this._attitudeRects   = [];
         return true;
       case 'adv_council':
+        if (this.gameState._graphicOptions?.highCouncil === false) {
+          this.gameState._addLog('The High Council display is disabled in Graphic Options.');
+          return true;
+        }
         if (this._highCouncil) { this._stopCouncilVideo(); this._highCouncil = false; }
         else { this._highCouncil = true; this._startCouncilVideo(); }
         return true;
@@ -3419,16 +3488,6 @@ export class MapRenderer {
       case 'wld_hof':
         this._hallOfFame = !this._hallOfFame;
         return true;
-      case 'wld_unelect': {
-        const result = gs.proposeUnElection();
-        if (!result.eligible) {
-          gs._addLog('You must own the United Nations to call an election.');
-        } else if (result.alreadyUsed) {
-          gs._addLog('The UN Election has already been held this game.');
-        }
-        // Victory/defeat is set inside proposeUnElection if applicable.
-        return true;
-      }
       case 'wld_spaceships':
         this._spaceshipViewer = !this._spaceshipViewer;
         this._spaceshipViewerRects = [];
@@ -3452,27 +3511,46 @@ export class MapRenderer {
     const gs = this.gameState;
 
     switch (action) {
+      case 'cheat_toggle':
+        this._cheatMode = !this._cheatMode;
+        this._editorLog(`Cheat mode ${this._cheatMode ? 'enabled' : 'disabled'}.`);
+        return true;
+      case 'cheat_unit': {
+        if (!this._cheatMode) return true;
+        const tile = this._getEditorCursorTile();
+        if (!tile) { this._editorLog('Select a map tile first.'); return true; }
+        const typeId = gs.activeUnit?.typeId ?? 0;
+        const unit = gs._spawnUnit(typeId, 0, tile.col, tile.row);
+        gs.selectUnit(unit);
+        gs._updateVisibility();
+        this._editorLog(`Created ${UNITS[typeId]?.name ?? 'unit'}.`);
+        return true;
+      }
       case 'cheat_reveal':
+        if (!this._cheatMode) return true;
         for (let r = 0; r < gs.mapRows; r++)
           for (let c = 0; c < gs.mapCols; c++)
             gs._visibility[r][c] = 2;
         gs.log.unshift('Map revealed.');
         return true;
       case 'cheat_gold':
+        if (!this._cheatMode) return true;
         if (gs.civs[0]) {
           gs.civs[0].gold = (gs.civs[0].gold ?? 0) + 1000;
           gs.log.unshift('+1000 gold added.');
         }
         return true;
       case 'cheat_research':
+        if (!this._cheatMode) return true;
         if (gs.civs[0] && gs.civs[0].currentResearch != null) {
           gs.civs[0].beakers = gs.advanceCost(gs.civs[0]);
           gs.log.unshift('Research completed next turn.');
         }
         return true;
       case 'cheat_destroyunits': {
+        if (!this._cheatMode) return true;
         // Destroy all units at the cursor position (axx0: Ctrl+Shift+D)
-        const vt = this._hoveredTile;
+        const vt = this._getEditorCursorTile();
         if (vt) {
           const toRemove = gs.units.filter(u => u.col === vt.col && u.row === vt.row);
           for (const u of toRemove) gs._removeUnit(u);
@@ -3480,21 +3558,132 @@ export class MapRenderer {
         }
         return true;
       }
+      case 'cheat_govt': {
+        if (!this._cheatMode || !gs.civs[0]) return true;
+        gs.civs[0].government = (gs.civs[0].government + 1) % GOVERNMENTS.length;
+        gs.civs[0].anarchyTurnsLeft = 0;
+        this._editorLog(`Government changed to ${GOVERNMENTS[gs.civs[0].government]?.name}.`);
+        return true;
+      }
+      case 'cheat_terrain': {
+        if (!this._cheatMode) return true;
+        const tile = this._getEditorCursorTile();
+        if (!tile) return true;
+        const terrains = Object.values(TERRAIN);
+        const current = terrains.indexOf(gs.tiles[tile.row][tile.col]);
+        gs.tiles[tile.row][tile.col] = terrains[(current + 1) % terrains.length];
+        this._editorLog(`Terrain changed to ${gs.tiles[tile.row][tile.col].name}.`);
+        return true;
+      }
+      case 'cheat_year': {
+        if (!this._cheatMode) return true;
+        const raw = window.prompt('Set game year (negative for B.C.)', String(gs.year));
+        if (raw == null) return true;
+        const wanted = Number.parseInt(raw, 10);
+        if (!Number.isFinite(wanted)) return true;
+        let bestTurn = gs.turn, bestDiff = Infinity;
+        for (let turn = 1; turn <= 1000; turn++) {
+          const diff = Math.abs(gs._gameYear(turn) - wanted);
+          if (diff < bestDiff) { bestDiff = diff; bestTurn = turn; }
+        }
+        gs.turn = bestTurn;
+        gs._spaceRaceLaunchTurn = null;
+        gs._spaceRaceLaunchYear = null;
+        this._editorLog(`Game year set to ${gs.year}.`);
+        return true;
+      }
+      case 'cheat_kill': {
+        if (!this._cheatMode) return true;
+        const choices = gs.civs.filter(c => c.id !== 0 && c.id !== gs.barbarianCivIdx && c.alive);
+        if (!choices.length) return true;
+        const raw = window.prompt(`Civilization id to eliminate: ${choices.map(c => `${c.id}=${c.data.plural}`).join(', ')}`, String(choices[0].id));
+        const civId = Number.parseInt(raw, 10);
+        const civ = choices.find(c => c.id === civId);
+        if (!civ) return true;
+        gs.units = gs.units.filter(u => u.civId !== civId);
+        gs.cities = gs.cities.filter(c => c.civId !== civId);
+        civ.alive = false;
+        this._editorLog(`${civ.data.plural} eliminated.`);
+        return true;
+      }
+      case 'cheat_human': {
+        if (!this._cheatMode) return true;
+        const choices = gs.civs.filter(c => c.id !== gs.barbarianCivIdx && c.alive);
+        const raw = window.prompt(`Human civilization id: ${choices.map(c => `${c.id}=${c.data.plural}`).join(', ')}`, '0');
+        const targetId = Number.parseInt(raw, 10);
+        if (targetId !== 0 && choices.some(c => c.id === targetId)) this._swapHumanCivilization(targetId);
+        return true;
+      }
+      case 'cheat_scenario': {
+        if (!this._cheatMode) return true;
+        const name = window.prompt('Scenario name', gs._scenarioName ?? 'New Scenario');
+        if (name == null) return true;
+        const turns = window.prompt('Maximum turns (0 for none)', String(gs._maxTurns ?? 0));
+        gs._isScenario = true;
+        gs._scenarioName = name.trim() || 'New Scenario';
+        gs._maxTurns = Math.max(0, Number.parseInt(turns, 10) || 0);
+        this._editorLog(`Scenario parameters updated: ${gs._scenarioName}.`);
+        return true;
+      }
+      case 'cheat_savescen':
+        if (this._cheatMode) this._downloadScenario();
+        return true;
       case 'cheat_edittechs':
+        if (!this._cheatMode) return true;
         this._openEditTechsDialog();
         return true;
       case 'cheat_editunit':
+        if (!this._cheatMode) return true;
         this._openEditUnitDialog();
         return true;
       case 'cheat_editcity':
+        if (!this._cheatMode) return true;
         this._openEditCityDialog();
         return true;
       case 'cheat_editking':
+        if (!this._cheatMode) return true;
         this._openEditKingDialog();
         return true;
       default:
         return false;
     }
+  }
+
+  _swapHumanCivilization(targetId) {
+    const gs = this.gameState;
+    if (!gs.civs[targetId] || targetId === 0) return false;
+    const remap = id => id === 0 ? targetId : id === targetId ? 0 : id;
+    [gs.civs[0], gs.civs[targetId]] = [gs.civs[targetId], gs.civs[0]];
+    for (let i = 0; i < gs.civs.length; i++) gs.civs[i].id = i;
+    for (const unit of gs.units) unit.civId = remap(unit.civId);
+    for (const city of gs.cities) city.civId = remap(city.civId);
+    for (const civ of gs.civs) {
+      civ.relations = new Map([...civ.relations].map(([id, value]) => [remap(id), value]));
+      civ.attitude = new Map([...civ.attitude].map(([id, value]) => [remap(id), value]));
+      civ.contacts = new Set([...civ.contacts].map(remap));
+      civ.embassies = new Set([...civ.embassies].map(remap));
+    }
+    gs.barbarianCivIdx = remap(gs.barbarianCivIdx);
+    gs.activeCivIdx = remap(gs.activeCivIdx);
+    gs.activeUnit = gs.units.find(u => u.civId === 0 && u.movesLeft > 0) ?? null;
+    gs._updateVisibility();
+    this._editorLog(`Human player changed to ${gs.civs[0].data.plural}.`);
+    return true;
+  }
+
+  _downloadScenario() {
+    const data = this.gameState.toSaveData();
+    data.isScenario = true;
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(this.gameState._scenarioName || 'scenario').replace(/[^a-z0-9_-]+/gi, '_')}.civ2-scenario.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    this._editorLog('Scenario saved.');
   }
 
   _executeCivilopediaAction(action) {
@@ -3799,6 +3988,14 @@ export class MapRenderer {
     }
   }
 
+  _autoSaveGame() {
+    try {
+      localStorage.setItem('civ2_autosave', JSON.stringify(this.gameState.toSaveData()));
+    } catch (e) {
+      console.warn('Autosave failed:', e.message);
+    }
+  }
+
   _saveGameAsSav() {
     try {
       const buffer = this.gameState.exportSav();
@@ -3830,7 +4027,7 @@ export class MapRenderer {
 
   _loadGame() {
     try {
-      const raw = localStorage.getItem('civ2_save');
+      const raw = localStorage.getItem('civ2_save') ?? localStorage.getItem('civ2_autosave');
       if (!raw) {
         this.gameState.log.unshift('No saved game found.');
         if (this.gameState.log.length > 8) this.gameState.log.length = 8;
@@ -3907,6 +4104,7 @@ export class MapRenderer {
     this._throneRoom          = false;
     this._throneUpgradeDialog = false;
     this._throneUpgradeRects  = [];
+    this._pendingThroneUpgradeDialog = false;
     this._scenarioCivChooser  = false;
     this._scenarioPending     = null;
     this._scenarioCivRects    = [];
@@ -3933,6 +4131,13 @@ export class MapRenderer {
     this._combatAnim          = null;
     this._gameOptionsDialog   = false;
     this._gameOptionsRects    = [];
+    this._graphicOptionsDialog = false;
+    this._graphicOptionsRects = [];
+    this._cityReportOptionsDialog = false;
+    this._cityReportOptionsRects = [];
+    this._optionsDrafts = {};
+    this._editorTargetTile = null;
+    this._pendingProductionChange = null;
     this._casualtyDialog      = false;
     this._casualtyDialogRects = [];
     this._showGrid            = false;
@@ -3960,6 +4165,7 @@ export class MapRenderer {
 
   /** Determine the music era from game year and start the matching CD track. */
   _startEraMusic(year) {
+    if (this.gameState?._gameOptions?.music === false) return;
     let era;
     if (year < 0)    era = 'ancient';
     else if (year < 1500) era = 'renaissance';
@@ -4161,8 +4367,8 @@ export class MapRenderer {
     const dx = (canvasW - DW) / 2, dy = (canvasH - DH) / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, canvasW, canvasH);
     // Version string as panel title (matches original Civ2 MGE Game Options dialog)
-    this._drawCiv2Panel(ctx, dx, dy, DW, DH, 'Civilization II Multiplayer Gold 5.4.0f Multiplayer 26-March-99 Patch 3');
-    const opts = this.gameState._gameOptions ?? {};
+    this._drawCiv2Panel(ctx, dx, dy, DW, DH, 'Civilization II Multiplayer Gold 5.4.0f');
+    const opts = this._optionsDrafts._gameOptions ?? this.gameState._gameOptions ?? {};
     this._gameOptionsRects = [];
     ctx.textAlign = 'left';
     labels.forEach(([key, label], i) => {
@@ -4177,9 +4383,9 @@ export class MapRenderer {
     const bw = 80, bh = 24;
     const btnY = dy + DH - 38;
     this._drawWin95Button(ctx, dx + DW / 2 - bw - 10, btnY, bw, bh, 'OK');
-    this._gameOptionsRects.push({ x: dx + DW / 2 - bw - 10, y: btnY, w: bw, h: bh, key: '_close' });
+    this._gameOptionsRects.push({ x: dx + DW / 2 - bw - 10, y: btnY, w: bw, h: bh, key: '_ok' });
     this._drawWin95Button(ctx, dx + DW / 2 + 10, btnY, bw, bh, 'Cancel');
-    this._gameOptionsRects.push({ x: dx + DW / 2 + 10, y: btnY, w: bw, h: bh, key: '_close' });
+    this._gameOptionsRects.push({ x: dx + DW / 2 + 10, y: btnY, w: bw, h: bh, key: '_cancel' });
     ctx.textAlign = 'left';
   }
 
@@ -4200,7 +4406,7 @@ export class MapRenderer {
     const dx = (canvasW - DW) / 2, dy = (canvasH - DH) / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, canvasW, canvasH);
     this._drawCiv2Panel(ctx, dx, dy, DW, DH, 'Select Graphic Options');
-    const opts = this.gameState._graphicOptions ?? {};
+    const opts = this._optionsDrafts._graphicOptions ?? this.gameState._graphicOptions ?? {};
     this._graphicOptionsRects = [];
     ctx.textAlign = 'left';
     const DEFAULTS_OFF = new Set(['hdSprites']); // these default to unchecked
@@ -4215,9 +4421,9 @@ export class MapRenderer {
     const bw = 80, bh = 24;
     const btnY = dy + DH - 38;
     this._drawWin95Button(ctx, dx + DW / 2 - bw - 10, btnY, bw, bh, 'OK');
-    this._graphicOptionsRects.push({ x: dx + DW / 2 - bw - 10, y: btnY, w: bw, h: bh, key: '_close' });
+    this._graphicOptionsRects.push({ x: dx + DW / 2 - bw - 10, y: btnY, w: bw, h: bh, key: '_ok' });
     this._drawWin95Button(ctx, dx + DW / 2 + 10, btnY, bw, bh, 'Cancel');
-    this._graphicOptionsRects.push({ x: dx + DW / 2 + 10, y: btnY, w: bw, h: bh, key: '_close' });
+    this._graphicOptionsRects.push({ x: dx + DW / 2 + 10, y: btnY, w: bw, h: bh, key: '_cancel' });
     ctx.textAlign = 'left';
   }
 
@@ -4242,7 +4448,7 @@ export class MapRenderer {
     const dx = (canvasW - DW) / 2, dy = (canvasH - DH) / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, canvasW, canvasH);
     this._drawCiv2Panel(ctx, dx, dy, DW, DH, 'Select City Report Options');
-    const opts = this.gameState._cityReportOptions ?? {};
+    const opts = this._optionsDrafts._cityReportOptions ?? this.gameState._cityReportOptions ?? {};
     this._cityReportOptionsRects = [];
     ctx.textAlign = 'left';
     labels.forEach(([key, label], i) => {
@@ -4256,9 +4462,9 @@ export class MapRenderer {
     const bw = 80, bh = 24;
     const btnY = dy + DH - 38;
     this._drawWin95Button(ctx, dx + DW / 2 - bw - 10, btnY, bw, bh, 'OK');
-    this._cityReportOptionsRects.push({ x: dx + DW / 2 - bw - 10, y: btnY, w: bw, h: bh, key: '_close' });
+    this._cityReportOptionsRects.push({ x: dx + DW / 2 - bw - 10, y: btnY, w: bw, h: bh, key: '_ok' });
     this._drawWin95Button(ctx, dx + DW / 2 + 10, btnY, bw, bh, 'Cancel');
-    this._cityReportOptionsRects.push({ x: dx + DW / 2 + 10, y: btnY, w: bw, h: bh, key: '_close' });
+    this._cityReportOptionsRects.push({ x: dx + DW / 2 + 10, y: btnY, w: bw, h: bh, key: '_cancel' });
     ctx.textAlign = 'left';
   }
 
@@ -4304,39 +4510,85 @@ export class MapRenderer {
 
   _drawSpaceshipViewer(ctx, canvasW, canvasH) {
     if (!this._spaceshipViewer) return;
-    
+
     const gs = this.gameState;
-    const DW = 400, DH = 320;
+    const DW = 540, DH = 410;
     const dx = (canvasW - DW) / 2, dy = (canvasH - DH) / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, canvasW, canvasH);
-    this._drawCiv2Panel(ctx, dx, dy, DW, DH, 'Spaceship Status');
+    this._drawCiv2Panel(ctx, dx, dy, DW, DH, 'Spaceship');
     ctx.textAlign = 'left';
-     const hdrY = dy + 42;
-     ctx.font = FONT.SMALL_BOLD;
-     this._panelText(ctx, 'Civilization', dx + 10, hdrY); this._panelText(ctx, 'Structural', dx + 150, hdrY);
-     this._panelText(ctx, 'Component', dx + 230, hdrY); this._panelText(ctx, 'Module', dx + 310, hdrY);
-      ctx.fillStyle = CLR.WIN95_SHADOW; ctx.fillRect(dx + 6, hdrY + 4, DW - 12, 1);
-      const rowH = 22;
-      let ri = 0;
-      for (const civ of gs.civs) {
-        if (!civ || !civ.alive) continue;
-        const progress = gs.spaceshipProgress(civ.id);
-        const ry = hdrY + 10 + ri * rowH;
-        if (ry + rowH > dy + DH - 40) break;
-        ctx.fillStyle = ri % 2 === 0 ? '#b8b8b8' : CLR.WIN95_FACE; ctx.fillRect(dx + 6, ry, DW - 12, rowH);
-        ctx.font = FONT.BODY_SMALL; ctx.fillStyle = '#000';
-        ctx.fillText((civ.data?.plural ?? `Civ#${civ.id}`).slice(0, 18), dx + 10, ry + 15);
-        ctx.fillStyle = progress.structural >= 8 ? CLR.WIN_COLOR : '#000'; ctx.fillText(`${progress.structural}/8`, dx + 165, ry + 15);
-        ctx.fillStyle = progress.component >= 4 ? CLR.WIN_COLOR : '#000'; ctx.fillText(`${progress.component}/4`, dx + 245, ry + 15);
-        ctx.fillStyle = progress.module >= 4 ? CLR.WIN_COLOR : '#000'; ctx.fillText(`${progress.module}/4`, dx + 320, ry + 15);
-        if (gs.spaceshipReady(civ.id)) { ctx.fillStyle = CLR.WIN_COLOR; ctx.font = FONT.TINY_BOLD; ctx.fillText('READY', dx + 365, ry + 15); }
-       ri++;
-     }
-     if (ri === 0) {
-       ctx.font = FONT.BODY_ITALIC; ctx.fillStyle = '#666'; ctx.textAlign = 'center';
-       ctx.fillText('No civilizations with spaceship parts.', dx + DW / 2, dy + DH / 2); ctx.textAlign = 'left';
-     }
     this._spaceshipViewerRects = [];
+    const stats = gs.spaceshipStats(0);
+    const civ = gs.civs[0];
+    ctx.font = FONT.SMALL_BOLD;
+    this._panelText(ctx, `${civ?.data?.plural ?? 'Your'} Spaceship`, dx + 12, dy + 40);
+
+    const systems = [
+      ['Structural', 'structural', null],
+      ['Propulsion', 'propulsion', 'component'],
+      ['Fuel', 'fuel', 'component'],
+      ['Habitation', 'habitation', 'module'],
+      ['Life Support', 'lifeSupport', 'module'],
+      ['Solar Panel', 'solar', 'module'],
+    ];
+    systems.forEach(([label, key, source], i) => {
+      const y = dy + 56 + i * 27;
+      ctx.fillStyle = i % 2 ? CLR.WIN95_FACE : '#b8b8b8';
+      ctx.fillRect(dx + 10, y, 250, 23);
+      ctx.font = FONT.BODY_SMALL; ctx.fillStyle = '#000';
+      ctx.fillText(label, dx + 18, y + 16);
+      ctx.textAlign = 'right';
+      ctx.fillText(`${stats?.[key] ?? 0}${key === 'structural' ? '/39' : source === 'component' ? '/8' : '/4'}`, dx + 170, y + 16);
+      ctx.textAlign = 'left';
+      if (source && !stats?.launched) {
+        const available = source === 'component' ? stats.unassignedComponents : stats.unassignedModules;
+        const bx = dx + 184;
+        this._drawWin95Button(ctx, bx, y + 1, 68, 21, available > 0 ? 'Add' : 'None');
+        if (available > 0) this._spaceshipViewerRects.push({ x: bx, y: y + 1, w: 68, h: 21, key: `_assign:${key}` });
+      }
+    });
+
+    const infoX = dx + 282;
+    ctx.font = FONT.BODY_SMALL;
+    const flight = Number.isFinite(stats?.flightYears) ? `${stats.flightYears.toFixed(1)} years` : '—';
+    const details = [
+      `Components waiting: ${stats?.unassignedComponents ?? 0}`,
+      `Modules waiting: ${stats?.unassignedModules ?? 0}`,
+      `Population: ${(stats?.population ?? 0).toLocaleString()}`,
+      `Support: ${stats?.support ?? 0}%`,
+      `Energy: ${stats?.energy ?? 0}%`,
+      `Probability: ${stats?.success ?? 0}%`,
+      `Flight time: ${flight}`,
+    ];
+    details.forEach((line, i) => this._panelText(ctx, line, infoX, dy + 62 + i * 23));
+
+    const launchX = infoX, launchY = dy + 230;
+    if (stats?.launched) {
+      ctx.font = FONT.SMALL_BOLD;
+      this._panelText(ctx, `Launched ${stats.launchYear}`, launchX, launchY);
+      this._panelText(ctx, `Estimated arrival ${stats.arrivalYear}`, launchX, launchY + 22);
+    } else {
+      const ready = gs.spaceshipReady(0);
+      this._drawWin95Button(ctx, launchX, launchY, 220, 28, ready ? 'LAUNCH SPACESHIP' : 'SHIP NOT READY');
+      if (ready) this._spaceshipViewerRects.push({ x: launchX, y: launchY, w: 220, h: 28, key: '_launch' });
+    }
+
+    ctx.fillStyle = CLR.WIN95_SHADOW; ctx.fillRect(dx + 10, dy + 286, DW - 20, 1);
+    ctx.font = FONT.SMALL_BOLD;
+    this._panelText(ctx, 'Space Race', dx + 12, dy + 307);
+    let ri = 0;
+    for (const rival of gs.civs) {
+      if (!rival || !rival.alive || rival.id === gs.barbarianCivIdx) continue;
+      const p = gs.spaceshipStats(rival.id);
+      const ry = dy + 316 + ri * 18;
+      ctx.font = FONT.TINY; ctx.fillStyle = '#000';
+      const status = p.launched ? `arrival ${p.arrivalYear}` : `${p.structural}S ${p.component}C ${p.module}M`;
+      ctx.fillText((rival.data?.plural ?? `Civ ${rival.id}`).slice(0, 22), dx + 16, ry + 12);
+      ctx.fillText(status, dx + 190, ry + 12);
+      ri++;
+      if (ri >= 3) break;
+    }
+
     const bx = dx + DW / 2 - 40, by = dy + DH - 36, bw = 80, bh = 24;
     this._drawWin95Button(ctx, bx, by, bw, bh, 'Close');
     this._spaceshipViewerRects.push({ x: bx, y: by, w: bw, h: bh, key: '_close' });
@@ -4365,9 +4617,10 @@ export class MapRenderer {
   }
 
   _getEditorCursorTile() {
-    if (this._hoveredTile) return this._hoveredTile;
+    if (this._editorTargetTile) return this._editorTargetTile;
     const au = this.gameState?.activeUnit;
-    return au ? { col: au.col, row: au.row } : null;
+    if (au) return { col: au.col, row: au.row };
+    return this._hoveredTile ?? null;
   }
 
   _drawEditorInputBox(ctx, x, y, w, h, text, cursor = null, active = false) {
@@ -4541,7 +4794,7 @@ export class MapRenderer {
       unit,
       typeId: unit.typeId,
       hpValue: this._clampEditorInt((unit.hp ?? 1) * 10, 10, 100),
-      movesLeft: this._clampEditorInt(unit.movesLeft ?? 0, 0, 99),
+      movesLeft: this._clampEditorInt(Math.ceil((unit.movesLeft ?? 0) / COSMIC.roadMultiplier), 0, 33),
       veteran: !!unit.veteran,
       homeCityId: unit.homeCity ?? null,
       typeScroll: Math.max(0, unit.typeId - 5),
@@ -4567,8 +4820,8 @@ export class MapRenderer {
     unit.typeId = d.typeId;
     unit.hp = hp;
     unit.maxHp = Math.max(hp, data?.hp ?? 1);
-    unit.movesLeft = this._clampEditorInt(d.movesLeft, 0, 99);
-    unit.maxMoves = Math.max(data?.move ?? 0, unit.movesLeft);
+    unit.movesLeft = this._clampEditorInt(d.movesLeft, 0, 33) * COSMIC.roadMultiplier;
+    unit.maxMoves = Math.max((data?.move ?? 0) * COSMIC.roadMultiplier, unit.movesLeft);
     unit.veteran = !!d.veteran;
     unit.homeCity = d.homeCityId ?? null;
     unit.fuel = data?.domain === 1 && (data?.range ?? 0) > 0 ? data.range : 0;
@@ -4666,7 +4919,7 @@ export class MapRenderer {
     this._panelText(ctx, `Role ${selectedType?.role ?? 0}  Domain ${selectedType?.domain ?? 0}`, rx, py + 64);
 
     this._drawEditorStepper(ctx, rx, py + 90, 'HP', d.hpValue, d.rects, 'hpValue', 10, 100, 10);
-    this._drawEditorStepper(ctx, rx, py + 122, 'Moves Left', d.movesLeft, d.rects, 'movesLeft', 0, 99, 1);
+    this._drawEditorStepper(ctx, rx, py + 122, 'Moves Left', d.movesLeft, d.rects, 'movesLeft', 0, 33, 1);
 
     const cbY = py + 160;
     this._drawCiv2Checkbox(ctx, rx, cbY, d.veteran);

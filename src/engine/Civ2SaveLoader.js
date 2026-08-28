@@ -124,16 +124,35 @@ export class Civ2SaveLoader {
 
       // Diplomatic relations (7 bytes × 8 civs, packed in 4-byte groups)
       const relations = new Map();
+      const contacts = new Set();
       for (let other = 0; other < 8; other++) {
         const t0 = b[base + 32 + 4 * other];
         const t1 = b[base + 32 + 4 * other + 1];
+        if (bit(t0, 0)) contacts.add(other);
         const isWar = bit(t1, 5);
         relations.set(other, isWar ? 'war' : 'peace');
       }
 
+      const savedUnitTypeCount = isMGE ? 62 : 54;
+      const late = 216 + 3 * savedUnitTypeCount + 592;
+      const hasSpaceship = bit(b[base + late + 30], 0);
+      const spaceship = {
+        structural: u16(b, base + late + 38),
+        propulsion: u16(b, base + late + 40),
+        fuel: u16(b, base + late + 42),
+        habitation: u16(b, base + late + 44),
+        lifeSupport: u16(b, base + late + 46),
+        solar: u16(b, base + late + 48),
+        unassignedComponents: 0,
+        unassignedModules: 0,
+        launched: hasSpaceship,
+        launchYear: hasSpaceship ? u16(b, base + late + 34) : null,
+        arrivalYear: hasSpaceship ? u16(b, base + late + 32) : null,
+      };
+
       savCivs.push({
         savId, tribeId, gold, beakers, currentResearch,
-        sciRate, taxRate, govtId, advances, relations,
+        sciRate, taxRate, govtId, advances, relations, contacts, spaceship,
         alive: civsInPlay[savId],
       });
     }
@@ -402,6 +421,10 @@ export class Civ2SaveLoader {
           civ.relations.set(civMapping.get(otherSavId), rel);
         }
       }
+      civ.contacts = new Set(
+        [...sd.contacts].filter(otherSavId => civMapping.has(otherSavId)).map(otherSavId => civMapping.get(otherSavId))
+      );
+      civ.spaceship = { ...civ.spaceship, ...sd.spaceship };
       civArray[ourId] = civ;
     }
     gs.civs = civArray.filter(Boolean);
