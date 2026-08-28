@@ -10,7 +10,7 @@ reference-local/
 test-results/
 tests/report/
 assets/
-Screenshots/
+/Screenshots/
 
 # Debug/reference screenshots (not part of the codebase)
 /*.png
