@@ -15,6 +15,8 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
+const WORLD_S_MAP = path.resolve(process.cwd(), 'public', 'Maps', 'WORLD_S.MP');
+
 const pageErrors = new WeakMap();
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -199,7 +201,7 @@ test.describe('Title Screen', () => {
     const chooserPromise = page.waitForEvent('filechooser');
     await click(page, await titleControlCenter(page, 'ok'));
     const chooser = await chooserPromise;
-    await chooser.setFiles('/Users/icd/Workspace/civ2/public/Maps/WORLD_S.MP');
+    await chooser.setFiles(WORLD_S_MAP);
     await page.waitForFunction(() => window.__civ2?.mapScreen?._wizard?.step === 1);
 
     expect(await ms(page, '_titleScreen')).toBe(false);
