@@ -243,6 +243,14 @@ test.describe('Title Screen', () => {
     expect(newGame).not.toBeNull();
     expect(titleScreen).toBe(false);
   });
+
+  test('Enter skips the opening movie without also starting a new game', async ({ page }) => {
+    await gotoGame(page);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => window.__civ2?.mapScreen?._titleScreen === true);
+    expect(await ms(page, '_wizard')).toBeNull();
+    expect(await ms(page, '_titleSelection')).toBe(0);
+  });
 });
 
 test.describe('Original MGE graphics data', () => {
@@ -1377,6 +1385,31 @@ test.describe('Save / Load', () => {
     await page.waitForTimeout(200);
     const restoredTurn = await ms(page, 'gameState.turn');
     expect(restoredTurn).toBe(turnBeforeSave);
+  });
+
+  test('loading without a human unit centres on the first human city, not an unseen AI unit', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const screen = window.__civ2.mapScreen;
+      const gs = screen.gameState;
+      let city = gs.cities.find(c => c.civId === 0);
+      if (!city) {
+        const settler = gs.units.find(u => u.civId === 0 && u.typeId === 0);
+        city = gs.foundCity(settler);
+      }
+      gs.units = gs.units.filter(u => u.civId !== 0);
+      screen._saveGame();
+      let centred = null;
+      const originalCenterOn = screen.centerOn.bind(screen);
+      screen.centerOn = (col, row, ...rest) => {
+        centred = { col, row };
+        return originalCenterOn(col, row, ...rest);
+      };
+      screen._loadGame();
+      return { centred, city: { col: city.col, row: city.row } };
+    });
+    expect(result.centred).toEqual(result.city);
   });
 
   test('title screen enables Load Saved Game after a save exists', async ({ page }) => {
@@ -6969,17 +7002,25 @@ test.describe('Human playthrough regressions', () => {
       const gs = ms.gameState;
       const canvas = document.createElement('canvas');
       canvas.width = 1280; canvas.height = 800;
+      let emptyTextY = null;
+      const originalPanelText = ms._panelText.bind(ms);
+      ms._panelText = (ctx, text, x, y, ...rest) => {
+        if (text === 'No other civilizations known.') emptyTextY = y;
+        return originalPanelText(ctx, text, x, y, ...rest);
+      };
       ms._drawDiplomacyScreen(canvas.getContext('2d'), canvas.width, canvas.height);
       const before = ms._diplomacyScreenRects.filter(r => r.action === 'contact').map(r => r.civId);
+      const close = ms._diplomacyScreenRects.find(r => r.action === 'close');
       gs.establishContact(0, 1);
       ms._drawDiplomacyScreen(canvas.getContext('2d'), canvas.width, canvas.height);
       const after = ms._diplomacyScreenRects.filter(r => r.action === 'contact').map(r => r.civId);
       const restored = gs.constructor.fromSaveData(gs.toSaveData());
-      return { before, after, savedContact: restored.hasContact(0, 1) };
+      return { before, after, savedContact: restored.hasContact(0, 1), emptyTextY, closeY: close.y };
     });
     expect(result.before).toEqual([]);
     expect(result.after).toEqual([1]);
     expect(result.savedContact).toBe(true);
+    expect(result.emptyTextY).toBeLessThan(result.closeY - 8);
   });
 
   test('a garrisoned city opens before unit or tile actions in both view modes', async ({ page }) => {
@@ -7150,6 +7191,33 @@ test.describe('Human playthrough regressions', () => {
     expect(result.whileOff).toBe(result.before);
     expect(result.after).toBe(result.before + 1);
     expect(result.domestic).toBe(true);
+  });
+
+  test('handled cheat function keys suppress browser focus shortcuts', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      const gs = ms.gameState;
+      const civ = gs.civs[0];
+      civ.currentResearch = gs.availableAdvances(0)[0].id;
+      ms._executeMenuAction('cheat_toggle');
+      const before = { x: ms.viewX, y: ms.viewY };
+      let prevented = false;
+      ms._onKeyDown({
+        key: 'F6', shiftKey: true, ctrlKey: false, altKey: false,
+        preventDefault() { prevented = true; },
+      });
+      return {
+        prevented,
+        before,
+        after: { x: ms.viewX, y: ms.viewY },
+        completed: civ.beakers === gs.advanceCost(civ),
+      };
+    });
+    expect(result.prevented).toBe(true);
+    expect(result.after).toEqual(result.before);
+    expect(result.completed).toBe(true);
   });
 });
 
