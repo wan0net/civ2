@@ -276,6 +276,76 @@ test.describe('Original MGE graphics data', () => {
     expect(markers.missing).toBe(0);
   });
 
+  test('city garrison flag uses its MGE marker and the active unit flashes over the city', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    await page.waitForFunction(() => window.__civ2?.mapScreen?._citySpriteData?.open?.[0]?.[0]);
+
+    const result = await page.evaluate(() => {
+      const screen = window.__civ2.mapScreen;
+      const gs = screen.gameState;
+      const founder = gs.units.find(u => u.civId === 0 && window.__civ2.UNITS[u.typeId]?.role === 5);
+      const city = gs.foundCity(founder);
+      const unit = gs._spawnUnit(2, 0, city.col, city.row);
+      gs.activeUnit = unit;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 800;
+      const ctx = canvas.getContext('2d');
+      const flagSprite = screen._civFlagSprites[gs.civs[city.civId].data.color];
+      const unitSprite = screen._getColoredUnitSprite(
+        Math.floor(unit.typeId / 9),
+        unit.typeId % 9,
+        window.__civ2.CIV_COLORS?.[gs.civs[unit.civId].data.color] ?? '#fff',
+      );
+
+      const flagCalls = [];
+      const originalDrawImage = ctx.drawImage.bind(ctx);
+      ctx.drawImage = (...args) => {
+        if (args[0] === flagSprite) flagCalls.push(args.slice(1));
+        return originalDrawImage(...args);
+      };
+      screen._drawCity(ctx, city, 100, 200, true);
+
+      let unitCalls = 0;
+      let selectionRingCalls = 0;
+      screen._drawSelectionRing = () => { selectionRingCalls++; };
+      ctx.drawImage = (...args) => {
+        if (args[0] === unitSprite) unitCalls++;
+        return originalDrawImage(...args);
+      };
+      screen._blinkTime = 0;
+      screen.render(ctx, canvas.width, canvas.height);
+      const visibleCalls = unitCalls;
+      screen._blinkTime = 200;
+      screen.render(ctx, canvas.width, canvas.height);
+      const hiddenCalls = unitCalls - visibleCalls;
+
+      const { styleRow, sizeCol, hasWalls } = screen._getCitySpriteInfo(city);
+      const cell = screen._citySpriteData[hasWalls ? 'walled' : 'open'][styleRow][sizeCol];
+      const destY = 200 - 64 / 2;
+      return {
+        flagCall: flagCalls.at(-1),
+        expectedFlag: [
+          100 + cell.flagLoc.x * 2,
+          destY + (cell.flagLoc.y - 17) * 2,
+          28,
+          44,
+        ],
+        visibleCalls,
+        hiddenCalls,
+        selectionRingCalls,
+      };
+    });
+
+    expect(result.flagCall).toEqual(result.expectedFlag);
+    // The sidebar keeps its unit portrait visible; the one additional draw in
+    // the on-frame is the flashing map sprite over the city.
+    expect(result.visibleCalls).toBe(result.hiddenCalls + 1);
+    expect(result.selectionRingCalls).toBe(0);
+  });
+
   test('unit shields use original MGE light and dark player colours', async ({ page }) => {
     await gotoGame(page);
     await startTestGame(page);
@@ -300,6 +370,64 @@ test.describe('Original MGE graphics data', () => {
 
     expect(colours).toContainEqual({ color: '#efefef', type: 'front' });
     expect(colours).toContainEqual({ color: '#afafaf', type: 'back' });
+  });
+
+  test('terrain joins use sparse MGE dither dots instead of replacing whole quadrants', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+
+    const opaqueCounts = await page.evaluate(() => {
+      const screen = window.__civ2.mapScreen;
+      const masks = screen._buildDitherMasks();
+      return masks.map(mask => {
+        const data = mask.getContext('2d').getImageData(0, 0, mask.width, mask.height).data;
+        let opaque = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] > 0) opaque++;
+        return opaque;
+      });
+    });
+
+    expect(opaqueCounts).toHaveLength(4);
+    for (const count of opaqueCounts) {
+      expect(count).toBeGreaterThan(0);
+      expect(count).toBeLessThan(512);
+    }
+  });
+
+  test('fog edges use sparse MGE dither dots instead of opaque quadrants', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+
+    const masks = await page.evaluate(() => {
+      const screen = window.__civ2.mapScreen;
+      const gs = screen.gameState;
+      for (const row of gs._visibility) row.fill(0);
+      gs._visibility[5][5] = 1;
+
+      screen._showHiddenTerrain = true;
+      screen._fogDitherQuads = null;
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 64;
+      screen._drawFogDither(canvas.getContext('2d'), 0, 0, 5, 5);
+      const revealBuiltFog = screen._fogDitherQuads !== null;
+
+      screen._showHiddenTerrain = false;
+      screen._drawFogDither(canvas.getContext('2d'), 0, 0, 5, 5);
+      const quads = screen._fogDitherQuads.map(({ canvas: mask }) => {
+        const data = mask.getContext('2d').getImageData(0, 0, mask.width, mask.height).data;
+        let opaque = 0;
+        for (let i = 3; i < data.length; i += 4) if (data[i] > 0) opaque++;
+        return { opaque, pixels: mask.width * mask.height };
+      });
+      return { revealBuiltFog, quads };
+    });
+
+    expect(masks.revealBuiltFog).toBe(false);
+    expect(masks.quads).toHaveLength(4);
+    for (const mask of masks.quads) {
+      expect(mask.opaque).toBeGreaterThan(0);
+      expect(mask.opaque).toBeLessThan(mask.pixels);
+    }
   });
 
   test('city sprite selection follows era, size, capital, walls, and Great Wall', async ({ page }) => {
@@ -423,10 +551,17 @@ test.describe('Original MGE graphics data', () => {
       screen._cityScreenProdList = true;
       const canvas = document.createElement('canvas');
       canvas.width = 1280; canvas.height = 800;
-      screen._drawCityScreen(canvas.getContext('2d'), 1280, 800);
+      const ctx = canvas.getContext('2d');
+      screen._drawCityScreen(ctx, 1280, 800);
+      const firstRow = screen._cityScreenItemRects[0];
+      const lastRow = screen._cityScreenItemRects.at(-1);
+      const pixel = (x, y) => [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data];
       return {
         dialog: screen._cityProductionDialogRect,
         itemCount: screen._cityScreenItemRects.length,
+        itemNames: screen._cityScreenItemRects.map(rect => rect.item.name),
+        selectedFill: pixel(firstRow.x + 55, firstRow.y + firstRow.h / 2),
+        emptyListFill: pixel(firstRow.x + 55, lastRow.y + lastRow.h + 10),
         tabs: screen._cityScreenTabRects.length,
         queue: screen._cityScreenQueueModeRect,
         auto: screen._cityScreenAutoRect,
@@ -435,13 +570,58 @@ test.describe('Original MGE graphics data', () => {
       };
     });
 
-    expect(result.dialog.w).toBe(550); // 440px Game.txt dialog at city window's 1.25 scale
+    expect(result.dialog.w).toBe(680); // original MGE top-level dialog width at this viewport
+    expect(result.dialog.h).toBe(267.5);
     expect(result.itemCount).toBeGreaterThan(0);
+    expect(result.itemNames).toContain('Settlers');
+    expect(result.selectedFill).toEqual([128, 128, 128, 255]);
+    expect(result.emptyListFill).toEqual([192, 192, 192, 255]);
     expect(result.tabs).toBe(0);
     expect(result.queue).toBeNull();
     expect(result.auto).not.toBeNull();
     expect(result.help).not.toBeNull();
     expect(result.ok).not.toBeNull();
+  });
+
+  test('size-one city holds completed Settlers until it grows', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+
+    const result = await page.evaluate(() => {
+      const gs = window.__civ2.mapScreen.gameState;
+      const founder = gs.units.find(u => u.civId === 0 && window.__civ2.UNITS[u.typeId]?.role === 5);
+      const city = gs.foundCity(founder);
+      city.production = { type: 'unit', id: 0 };
+      city.shields = gs._productionCost(city.production);
+      const beforeUnits = gs.units.filter(u => u.civId === 0 && u.typeId === 0).length;
+
+      const completedAtSizeOne = gs._completeProduction(city);
+      const held = {
+        shields: city.shields,
+        production: city.production,
+        units: gs.units.filter(u => u.civId === 0 && u.typeId === 0).length,
+      };
+
+      city.size = 2;
+      const completedAtSizeTwo = gs._completeProduction(city);
+      return {
+        cost: gs._productionCost({ type: 'unit', id: 0 }),
+        beforeUnits,
+        completedAtSizeOne,
+        held,
+        completedAtSizeTwo,
+        finalSize: city.size,
+        finalUnits: gs.units.filter(u => u.civId === 0 && u.typeId === 0).length,
+      };
+    });
+
+    expect(result.completedAtSizeOne).toBe(false);
+    expect(result.held.shields).toBe(result.cost);
+    expect(result.held.production).toEqual({ type: 'unit', id: 0 });
+    expect(result.held.units).toBe(result.beforeUnits);
+    expect(result.completedAtSizeTwo).toBe(true);
+    expect(result.finalSize).toBe(1);
+    expect(result.finalUnits).toBe(result.beforeUnits + 1);
   });
 
   test('production list highlights a row and changes production only after OK', async ({ page }) => {
@@ -569,6 +749,77 @@ test.describe('Original MGE graphics data', () => {
     expect(geom.areaH).toBe(100);
     expect(geom.mapX).toBe(1075);
     expect(geom.mapY).toBe(105);
+  });
+
+  test('minimap paints ocean blue and land green', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page, { mapCols: 80, mapRows: 50 });
+
+    const colours = await page.evaluate(() => {
+      const screen = window.__civ2.mapScreen;
+      const gs = screen.gameState;
+      gs.tiles[0][0] = window.__civ2.TERRAIN.OCEAN;
+      gs.tiles[0][1] = window.__civ2.TERRAIN.GRASSLAND;
+      gs._visibility[0][0] = 2;
+      gs._visibility[0][1] = 2;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 800;
+      const ctx = canvas.getContext('2d');
+      screen._drawSidebarMinimap(ctx, canvas.width, canvas.height, gs);
+      const { mapX, mapY, mmTileW } = screen._mmGeom(canvas.width, canvas.height);
+      return {
+        ocean: Array.from(ctx.getImageData(mapX, mapY, 1, 1).data.slice(0, 3)),
+        land: Array.from(ctx.getImageData(mapX + mmTileW, mapY, 1, 1).data.slice(0, 3)),
+      };
+    });
+
+    expect(colours.ocean).toEqual([0, 0, 95]);
+    expect(colours.land).toEqual([55, 123, 23]);
+  });
+
+  test('minimap reveal mode shows every tile without fog', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page, { mapCols: 40, mapRows: 25 });
+
+    const result = await page.evaluate(() => {
+      const screen = window.__civ2.mapScreen;
+      const gs = screen.gameState;
+      for (let row = 0; row < gs.mapRows; row++) {
+        gs._visibility[row].fill(0);
+        for (let col = 0; col < gs.mapCols; col++) {
+          gs.tiles[row][col] = (row + col) % 2
+            ? window.__civ2.TERRAIN.OCEAN
+            : window.__civ2.TERRAIN.GRASSLAND;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280; canvas.height = 800;
+      const ctx = canvas.getContext('2d');
+      const geom = screen._mmGeom(canvas.width, canvas.height);
+
+      screen._showHiddenTerrain = false;
+      screen._drawSidebarMinimap(ctx, canvas.width, canvas.height, gs);
+      const fogged = Array.from(ctx.getImageData(geom.mapX, geom.mapY, 1, 1).data.slice(0, 3));
+
+      screen._showHiddenTerrain = true;
+      screen._drawSidebarMinimap(ctx, canvas.width, canvas.height, gs);
+      let blackTiles = 0;
+      for (let row = 0; row < gs.mapRows; row++) {
+        for (let col = 0; col < gs.mapCols; col++) {
+          const x = geom.mapX + col * geom.mmTileW + (row % 2 ? Math.floor(geom.mmTileW / 2) : 0);
+          const y = geom.mapY + row * geom.mmTileH;
+          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          if (pixel[0] === 0 && pixel[1] === 0 && pixel[2] === 0) blackTiles++;
+        }
+      }
+      return { fogged, blackTiles };
+    });
+
+    expect(result.fogged).toEqual([0, 0, 0]);
+    expect(result.blackTiles).toBe(0);
   });
 
   test('sidebar uses light shield colour and original AI turn marker size', async ({ page }) => {
@@ -1154,6 +1405,162 @@ test.describe('Save / Load', () => {
   });
 });
 
+// ─── 6a. Bug reports ─────────────────────────────────────────────────────────
+
+test.describe('Bug reports', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+  });
+
+  test('Game menu report contains screenshot, restorable state, and view diagnostics', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const screen = window.__civ2.mapScreen;
+      const canvas = document.getElementById('game-canvas');
+
+      // Render the Game dropdown to prove the feature is exposed as a genuine
+      // menu item, then close it before capturing the underlying game scene.
+      screen._openMenu = 0;
+      screen.render(canvas.getContext('2d'), canvas.width, canvas.height);
+      const menuItem = screen._menuItemRects.find(item => item.action === 'game_reportbug');
+      screen._openMenu = null;
+      screen._menuItemRects = [];
+
+      screen.viewX = 96;
+      screen.viewY = 48;
+      screen._zoomLevel = 2;
+      const stateBefore = screen.gameState.toSaveData();
+
+      let reportDrawsDuringCapture = 0;
+      const originalDraw = screen._drawBugReportDialog;
+      screen._drawBugReportDialog = function(...args) {
+        reportDrawsDuringCapture++;
+        return originalDraw.apply(this, args);
+      };
+      screen._executeMenuAction(menuItem.action);
+      const drawsBeforeNextTask = reportDrawsDuringCapture;
+      const file = await screen._bugReportDialog.promise;
+      screen._drawBugReportDialog = originalDraw;
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const entries = {};
+      const decoder = new TextDecoder();
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      let offset = 0;
+      while (offset + 30 <= bytes.length && view.getUint32(offset, true) === 0x04034b50) {
+        const compressedSize = view.getUint32(offset + 18, true);
+        const nameLength = view.getUint16(offset + 26, true);
+        const extraLength = view.getUint16(offset + 28, true);
+        const nameStart = offset + 30;
+        const dataStart = nameStart + nameLength + extraLength;
+        const name = decoder.decode(bytes.slice(nameStart, nameStart + nameLength));
+        entries[name] = bytes.slice(dataStart, dataStart + compressedSize);
+        offset = dataStart + compressedSize;
+      }
+
+      const savedState = JSON.parse(decoder.decode(entries['game-state.json']));
+      const report = JSON.parse(decoder.decode(entries['report.json']));
+      const restored = screen.gameState.constructor.fromSaveData(savedState);
+      const png = entries['screenshot.png'];
+      const bitmap = await createImageBitmap(new Blob([png], { type: 'image/png' }));
+      const archiveEnd = Array.from(bytes.slice(-22, -18));
+      const answer = {
+        menuItem: !!menuItem,
+        status: screen._bugReportDialog.status,
+        filename: file.name,
+        mime: file.type,
+        zipStart: Array.from(bytes.slice(0, 4)),
+        zipEnd: archiveEnd,
+        entryNames: Object.keys(entries).sort(),
+        pngSignature: Array.from(png.slice(0, 8)),
+        pngSize: [bitmap.width, bitmap.height],
+        stateMatches: JSON.stringify(savedState) === JSON.stringify(stateBefore),
+        restoredTurn: restored.turn,
+        capturedTurn: stateBefore.turn,
+        rendererState: report.rendererState,
+        reportFormat: report.format,
+        drawsBeforeNextTask,
+      };
+      bitmap.close();
+      return answer;
+    });
+
+    expect(result.menuItem).toBe(true);
+    expect(result.status).toBe('ready');
+    expect(result.filename).toMatch(/^civ2-bug-report-.*\.zip$/);
+    expect(result.mime).toBe('application/zip');
+    expect(result.zipStart).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    expect(result.zipEnd).toEqual([0x50, 0x4b, 0x05, 0x06]);
+    expect(result.entryNames).toEqual(['README.txt', 'game-state.json', 'report.json', 'screenshot.png']);
+    expect(result.pngSignature).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    expect(result.pngSize).toEqual([1280, 800]);
+    expect(result.stateMatches).toBe(true);
+    expect(result.restoredTurn).toBe(result.capturedTurn);
+    expect(result.rendererState).toMatchObject({ viewX: 96, viewY: 48, zoomLevel: 2 });
+    expect(result.reportFormat).toBe('civ2-web-bug-report');
+    expect(result.drawsBeforeNextTask, 'report UI must not appear inside its own screenshot').toBe(0);
+  });
+
+  test('Share / Email passes the ZIP to the system share sheet and GitHub opens a prepared issue', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const screen = window.__civ2.mapScreen;
+      screen._openBugReportDialog();
+      await screen._bugReportDialog.promise;
+
+      const downloaded = [];
+      const openedUrls = [];
+      const originalClick = HTMLAnchorElement.prototype.click;
+      const originalOpen = window.open;
+      HTMLAnchorElement.prototype.click = function() { downloaded.push(this.download); };
+      window.open = url => { openedUrls.push(String(url)); return null; };
+      Object.defineProperty(navigator, 'canShare', {
+        configurable: true,
+        value: data => data.files?.length === 1,
+      });
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: async data => {
+          window.__sharedBugReport = {
+            title: data.title,
+            text: data.text,
+            names: data.files.map(file => file.name),
+            types: data.files.map(file => file.type),
+          };
+        },
+      });
+
+      const shared = await screen._shareBugReport();
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false });
+      const emailFallback = await screen._shareBugReport();
+      const opened = screen._openGitHubBugReport();
+      const answer = {
+        shared,
+        emailFallback,
+        opened,
+        shareData: window.__sharedBugReport,
+        emailUrl: openedUrls[0],
+        issueUrl: openedUrls[1],
+        downloaded,
+      };
+      HTMLAnchorElement.prototype.click = originalClick;
+      window.open = originalOpen;
+      return answer;
+    });
+
+    expect(result.shared).toBe(true);
+    expect(result.emailFallback).toBe(false);
+    expect(result.opened).toBe(true);
+    expect(result.shareData.title).toBe('Civilization II bug report');
+    expect(result.shareData.names[0]).toMatch(/^civ2-bug-report-.*\.zip$/);
+    expect(result.shareData.types).toEqual(['application/zip']);
+    expect(result.downloaded).toEqual([result.shareData.names[0], result.shareData.names[0]]);
+    expect(result.emailUrl).toMatch(/^mailto:\?subject=/);
+    expect(decodeURIComponent(result.emailUrl)).toContain(`File: ${result.shareData.names[0]}`);
+    expect(result.issueUrl).toContain('https://github.com/wan0net/civ2/issues/new');
+    expect(decodeURIComponent(result.issueUrl)).toContain(`attach the downloaded \`${result.shareData.names[0]}\``);
+  });
+});
+
 // ─── 7. City Interaction ──────────────────────────────────────────────────────
 
 test.describe('City Interaction', () => {
@@ -1581,6 +1988,35 @@ test.describe('Research', () => {
     expect(completed.granted).toBe(true);
   });
 
+  test('fog of war preserves explored tiles while revealing only the current unit area', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const gs = window.__civ2.mapScreen.gameState;
+      for (const row of gs._visibility) row.fill(0);
+      gs.cities = [];
+      gs.units = [{ id: 999, civId: 0, typeId: 0, col: 5, row: 5 }];
+
+      gs._updateVisibility();
+      const first = {
+        unit: gs._visibility[5][5],
+        neighbour: gs._visibility[5][6],
+        distant: gs._visibility[20][30],
+      };
+
+      gs.units[0].col = 15;
+      gs.units[0].row = 15;
+      gs._updateVisibility();
+      const moved = {
+        oldUnit: gs._visibility[5][5],
+        newUnit: gs._visibility[15][15],
+        distant: gs._visibility[20][30],
+      };
+      return { first, moved };
+    });
+
+    expect(result.first).toEqual({ unit: 2, neighbour: 2, distant: 0 });
+    expect(result.moved).toEqual({ oldUnit: 1, newUnit: 2, distant: 0 });
+  });
+
   test('research chooser matches the compact Game.txt listbox', async ({ page }) => {
     const result = await page.evaluate(() => {
       const screen = window.__civ2.mapScreen;
@@ -1588,15 +2024,26 @@ test.describe('Research', () => {
       screen._researchGoalCandidates = null;
       const canvas = document.createElement('canvas');
       canvas.width = 1280; canvas.height = 800;
-      screen._drawResearchChooser(canvas.getContext('2d'), 1280, 800);
+      const ctx = canvas.getContext('2d');
+      const titleCalls = [];
+      const fillText = ctx.fillText.bind(ctx);
+      ctx.fillText = (text, x, y, ...args) => {
+        if (String(text).startsWith('What discovery shall our ')) {
+          titleCalls.push({ text, width: ctx.measureText(text).width, font: ctx.font });
+        }
+        return fillText(text, x, y, ...args);
+      };
+      screen._drawResearchChooser(ctx, 1280, 800);
       return {
         dialog: screen._researchChooserRect,
+        title: titleCalls[0],
         specials: screen._researchChooserRects.filter(r => r.advId < 0).map(r => r.advId),
         rows: screen._researchChooserRects.filter(r => r.advId >= 0).length,
       };
     });
 
-    expect(result.dialog.w).toBe(300);
+    expect(result.dialog.w).toBeGreaterThanOrEqual(300);
+    expect(result.title.width).toBeLessThanOrEqual(result.dialog.w - 18);
     expect(result.specials).toEqual([-3, -2, -1]); // Help, Goal, implicit standard OK
     expect(result.rows).toBeGreaterThan(0);
     expect(result.rows).toBeLessThanOrEqual(16);

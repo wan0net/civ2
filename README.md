@@ -24,7 +24,7 @@ ownership attestation locally in your browser.
 - Original city, research, Civilopedia, throne-room, advisor, score, and map UI
 - Save/load, scenarios, diplomacy, research, combat, AI, Wonders, spaceship,
   government, trade, and late-game mechanics
-- 251 Playwright browser regression tests
+- 261 Playwright browser regression tests
 - Production build deployable beneath the GitHub Pages `/civ2/` project path
 
 This is a playable public beta, not a claim that every undocumented MGE edge
@@ -51,6 +51,22 @@ npm run build     # root-path production build
 npm run build:pages
 npm run preview:pages
 ```
+
+## Reporting bugs
+
+Choose **Game → Report Bug...** inside a running game. The app creates one ZIP
+containing a screenshot, a restorable game-state snapshot, the current camera
+and open-screen state, and browser/viewport diagnostics.
+
+- **Download ZIP** saves the report locally.
+- **Share / Email** uses the browser or operating system share sheet when file
+  sharing is supported. Otherwise it downloads the ZIP and opens an email draft
+  that tells you which file to attach.
+- **GitHub Issue** downloads the same ZIP and opens a prepared issue. Attach the
+  downloaded file before submitting it.
+
+The static app never asks for or stores GitHub credentials. Bug-report ZIPs can
+contain original MGE artwork, so they should be shared only for diagnosis.
 
 ## Repository layout
 

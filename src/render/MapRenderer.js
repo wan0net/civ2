@@ -25,6 +25,7 @@ import { applyWizardMixin } from './mixins/WizardMixin.js';
 import { applyCityScreenMixin } from './mixins/CityScreenMixin.js';
 import { applySidebarMixin } from './mixins/SidebarMixin.js';
 import { applyTerrainMixin } from './mixins/TerrainMixin.js';
+import { applyBugReportMixin } from './mixins/BugReportMixin.js';
 import { GameState }       from '../engine/GameState.js';
 import { Civ2SaveLoader }  from '../engine/Civ2SaveLoader.js';
 import { MapLoader }       from '../engine/MapLoader.js';
@@ -52,6 +53,8 @@ const MENUS = [
     { label: 'Save Game',            action: 'game_save',  shortcut: 'Ctrl+S' },
     { label: 'Save As MGE .SAV',     action: 'game_save_sav' },
     { label: 'Load Game',            action: 'game_load',  shortcut: 'Ctrl+L' },
+    null,
+    { label: 'Report Bug...',        action: 'game_reportbug' },
     null,
     { label: 'Retire',               action: 'game_retire', shortcut: 'Ctrl+R' },
     { label: 'Quit',                 action: 'game_quit',   shortcut: 'Ctrl+Q' },
@@ -371,6 +374,7 @@ export class MapRenderer {
     this._menuBarRects  = [];    // [{x, w, menuIdx}] — populated during draw
     this._menuItemRects = [];    // [{x,y,w,h,action,disabled}] — current dropdown
     this._menuHoverIdx  = null;  // index into _menuItemRects
+    this._bugReportDialog = null;
 
     // Title screen state
     this._titleScreen = false;
@@ -925,6 +929,7 @@ export class MapRenderer {
     if (this._titleScreen) { this._handleTitleScreenKey(e); return; }
     // ── Wizard intercepts all keys when active ──────────────────────────────
     if (this._wizard) { this._handleWizardKey(e); return; }
+    if (this._bugReportDialog) { this._handleBugReportKey(e); return; }
     if (this._editCityDialog) { this._handleEditCityKey(e); return; }
     if (this._editTechsDialog) { this._handleEditTechsKey(e); return; }
     if (this._editUnitDialog) { this._handleEditUnitKey(e); return; }
@@ -965,6 +970,7 @@ export class MapRenderer {
     const gs = this.gameState;
 
     // Modal dialogs first
+    if (this._bugReportDialog) { this._bugReportDialog = null;                       return true; }
     if (this._civilopedia)     { this._civilopedia = null;                             return true; }
     if (this._cityScreen && this._cityScreenProdList) {
       this._cityScreenProdList = false;
@@ -1440,6 +1446,11 @@ export class MapRenderer {
     // ── New Game wizard takes priority ─────────────────────────────────────────
     if (this._wizard) {
       this._handleNewGameWizardClick(px, py, canvasW, canvasH);
+      return;
+    }
+
+    if (this._bugReportDialog) {
+      this._handleBugReportClick(px, py);
       return;
     }
 
@@ -2468,6 +2479,20 @@ export class MapRenderer {
           // Collect cities for name rendering in a separate last pass
           if (!this._cityNameQueue) this._cityNameQueue = [];
           this._cityNameQueue.push({ city, x, y });
+
+          // In MGE the city and garrison flag remain in the base map, while
+          // the ready unit flashes on top as a separate animation frame.
+          // Queue it for the final map pass. The original MGE waiting frames
+          // then redraw city names over the unit.
+          const active = this.gameState.activeUnit;
+          const combatAtCity = this._combatAnim &&
+            ((col === this._combatAnim.atkCol && row === this._combatAnim.atkRow) ||
+             (col === this._combatAnim.defCol && row === this._combatAnim.defRow));
+          if (v === 2 && active?.col === col && active?.row === row &&
+              (!this._moveAnim || this._moveAnim.unit !== active) && !combatAtCity) {
+            if (!this._activeCityUnitQueue) this._activeCityUnitQueue = [];
+            this._activeCityUnitQueue.push({ unit: active, x, y });
+          }
         }
 
         if (v === 2) {
@@ -2563,7 +2588,17 @@ export class MapRenderer {
       ctx.strokeRect(fx - 2, fy - 2, tileWS + 4, tileHS + 4);
     }
 
-    // Pass LAST — city names drawn on top of everything (axx0 Draw.Map.cs:135-140)
+    // Active units in cities are animation elements in MGE: their sprite and
+    // shield blink over the otherwise-static city and flag.
+    if (this._activeCityUnitQueue) {
+      for (const { unit, x: ux, y: uy } of this._activeCityUnitQueue) {
+        this._drawUnit(ctx, unit, ux, uy, spritesReady);
+      }
+      this._activeCityUnitQueue = null;
+    }
+
+    // Pass LAST — city names remain readable above units, exactly as MGE's
+    // WaitingAnimation redraws them after its active-unit frame.
     if (this._cityNameQueue) {
       for (const { city, x: cx, y: cy } of this._cityNameQueue) {
         this._drawCityName(ctx, city, cx, cy);
@@ -2635,6 +2670,10 @@ export class MapRenderer {
 
     // Game-over screen
     if (!this._wizard && !this._retireStage && this.gameState.gameOver) this._drawGameOver(ctx, canvasW, canvasH);
+
+    // Modern support feature, intentionally topmost so its controls cannot be
+    // obscured by the MGE screens included in the captured report.
+    if (this._bugReportDialog) this._drawBugReportDialog(ctx, canvasW, canvasH);
   }
 
   _drawGameOver(ctx, canvasW, canvasH) {
@@ -3135,6 +3174,9 @@ export class MapRenderer {
         return true;
       case 'game_load':
         this._loadGame();
+        return true;
+      case 'game_reportbug':
+        this._openBugReportDialog();
         return true;
       case 'game_options':
         this._gameOptionsDialog = true;
@@ -3829,6 +3871,7 @@ export class MapRenderer {
     this._negotiationScreen   = null;
     this._aiPeaceProposal     = null;
     this._captureDialog       = null;
+    this._bugReportDialog     = null;
     this._stopWonderVideo();
     this._wonderSplash        = null;
     this._wonderVideo         = null;
@@ -5047,3 +5090,4 @@ applyWizardMixin(MapRenderer);
 applyDialogsMixin(MapRenderer);
 applyAdvisorsMixin(MapRenderer);
 applyInfoScreensMixin(MapRenderer);
+applyBugReportMixin(MapRenderer);

@@ -1427,9 +1427,20 @@ export function applyDialogsMixin(MapRenderer) {
       ? available.filter(a => goalIds.includes(a.id))
       : available;
 
-    // Game.txt @RESEARCH: width=300, listbox, Help + Goal. PopupBoxReader
-    // appends the standard OK button used to accept the highlighted row.
-    const PW   = Math.min(300, canvasW - 20);
+    const scienceEpoch = Math.max(0, ...[...civ.advances].map(id => ADVANCES[id]?.epoch ?? 0));
+    const title = goalIds
+      ? 'Then we should research'
+      : `What discovery shall our ${scienceEpoch >= 3 ? 'scientists' : 'wise men'} pursue?`;
+
+    // Game.txt @RESEARCH requests a 300px-wide listbox, but Civ2's dynamic
+    // dialog sizing treats that as a minimum and widens the panel when its
+    // Times New Roman heading is longer. Keep the title inside the bevel while
+    // preserving the compact 300px panel for shorter headings.
+    ctx.save();
+    ctx.font = FONT.TITLE_LARGE;
+    const titleWidth = Math.ceil(ctx.measureText(title).width) + 18;
+    ctx.restore();
+    const PW   = Math.min(Math.max(300, titleWidth), canvasW - 20);
     const rowsVis = Math.max(1, Math.min(16, avail.length));
     const ITEM_H = 23;
     const HDR = 34;
@@ -1439,10 +1450,6 @@ export function applyDialogsMixin(MapRenderer) {
     const py   = Math.round((canvasH - PH) / 2);
     this._researchChooserRect = { x: px, y: py, w: PW, h: PH };
 
-    const scienceEpoch = Math.max(0, ...[...civ.advances].map(id => ADVANCES[id]?.epoch ?? 0));
-    const title = goalIds
-      ? 'Then we should research'
-      : `What discovery shall our ${scienceEpoch >= 3 ? 'scientists' : 'wise men'} pursue?`;
     this._drawCiv2Panel(ctx, px, py, PW, PH, title);
 
     const listY0 = py + HDR;

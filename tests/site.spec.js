@@ -6,6 +6,30 @@ test.describe('Public project site', () => {
     await expect(page.getByRole('heading', { name: /Build a civilization/i })).toBeVisible();
     await expect(page.getByText(/must own Civilization II MGE/i)).toBeVisible();
     await expect(page.getByRole('link', { name: 'Open the game' })).toHaveAttribute('href', './game.html');
+
+    const preview = page.getByRole('img', { name: /Rome and three Roman warrior units/i });
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveAttribute('src', './site/gameplay.jpg');
+
+    const [headingBox, previewBox] = await Promise.all([
+      page.getByRole('heading', { name: /Build a civilization/i }).boundingBox(),
+      preview.boundingBox(),
+    ]);
+    expect(headingBox).not.toBeNull();
+    expect(previewBox).not.toBeNull();
+    expect(previewBox.x).toBeGreaterThan(headingBox.x);
+    expect(previewBox.width).toBeGreaterThan(400);
+  });
+
+  test('gameplay preview remains visible on a narrow screen', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+
+    const preview = page.getByRole('img', { name: /Rome and three Roman warrior units/i });
+    await expect(preview).toBeVisible();
+    const previewBox = await preview.boundingBox();
+    expect(previewBox.width).toBeGreaterThan(300);
+    expect(previewBox.x).toBeGreaterThanOrEqual(0);
   });
 
   test('game does not load MGE assets before ownership attestation', async ({ page }) => {
