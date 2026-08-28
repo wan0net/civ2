@@ -11,7 +11,7 @@ preserving the original MGE interface, rules, proportions, music, and movies.
 
 ## Play
 
-Visit the [project site](https://wan0net.github.io/civ2/) and choose **Open the
+Visit the [project site](https://wan0.net/civ2/) and choose **Open the
 game**. The project page explains the recreation and the game page records the
 ownership attestation locally in your browser.
 
