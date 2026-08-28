@@ -107,7 +107,11 @@ async function waitForTitleScreen(page) {
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => {
     const ms = window.__civ2?.mapScreen;
-    return ms?._titleScreen === true && ms?._titleRects?.length > 0;
+    return ms?._titleScreen === true
+      && ms?._titleRects?.length > 0
+      && ms?._titleDialogRect
+      && ms?._wizardPhotoRect
+      && ms?._wizardSealRect;
   }, undefined, { timeout: 15_000 });
 }
 
