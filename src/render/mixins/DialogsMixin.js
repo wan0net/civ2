@@ -357,7 +357,7 @@ export function applyDialogsMixin(MapRenderer) {
     if (others.length === 0) {
       ctx.font = FONT.BODY;
       ctx.textAlign = 'center';
-      this._panelText(ctx, 'No other civilizations known.', px + PW / 2, py + 80);
+      this._panelText(ctx, 'No other civilizations known.', px + PW / 2, py + 54);
       ctx.textAlign = 'left';
     }
 

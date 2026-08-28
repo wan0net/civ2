@@ -366,12 +366,14 @@ export function applyWizardMixin(MapRenderer) {
     video.playsInline = true;
     video.muted = false;
     let soundButton = null;
+    let skipOnKey = null;
 
     const finish = () => {
       if (this._openingVideoDone) return;
       this._openingVideoDone = true;
       clearTimeout(stallTimer);
-      document.removeEventListener('keydown', skipOnKey);
+      if (skipOnKey) document.removeEventListener('keydown', skipOnKey, true);
+      if (this._openingVideoSkipHandler === skipOnKey) this._openingVideoSkipHandler = null;
       soundButton?.remove();
       if (video.parentNode) video.parentNode.removeChild(video);
       onDone();
@@ -383,9 +385,21 @@ export function applyWizardMixin(MapRenderer) {
     const stallTimer = setTimeout(finish, 60_000);
 
     video.addEventListener('ended', finish);
-    video.addEventListener('click', finish);
-    const skipOnKey = () => finish();
-    document.addEventListener('keydown', skipOnKey);
+    video.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      finish();
+    });
+    skipOnKey = event => {
+      if (this._openingVideoDone) return;
+      // The same Enter/Space press must not fall through to the freshly shown
+      // title dialog and activate its default selection.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      finish();
+    };
+    this._openingVideoSkipHandler = skipOnKey;
+    document.addEventListener('keydown', skipOnKey, true);
 
     video.addEventListener('canplay', async () => {
       try {

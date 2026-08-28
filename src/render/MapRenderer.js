@@ -982,7 +982,7 @@ export class MapRenderer {
     this._setScrollKey(e.key, true);
 
     if (this._handleDialogKey(e)) return;
-    this._handleGameKey(e);
+    if (this._handleGameKey(e)) e.preventDefault();
   }
 
   _handleDialogKey(e) {
@@ -4117,6 +4117,10 @@ export class MapRenderer {
     this._stopEventVideo();
     // Suppress any opening video overlay still in the DOM (prevent it from re-enabling title screen)
     this._openingVideoDone = true;
+    if (this._openingVideoSkipHandler) {
+      document.removeEventListener('keydown', this._openingVideoSkipHandler, true);
+      this._openingVideoSkipHandler = null;
+    }
     const openVid = document.querySelector('video[src*="OPENING"]');
     if (openVid?.parentNode) {
       openVid.pause();
@@ -4154,12 +4158,17 @@ export class MapRenderer {
       gs._updateVisibility();
     }
 
-    const firstUnit = gs.activeUnit ?? gs.units[0];
+    // Never centre a human load on an unseen AI unit. If the player has no
+    // active piece (common immediately after founding the capital), use their
+    // first remaining unit or city instead.
+    const firstUnit = gs.activeUnit?.civId === 0
+      ? gs.activeUnit
+      : gs.units.find(unit => unit.civId === 0);
     if (firstUnit) {
       this.centerOn(firstUnit.col, firstUnit.row, this._canvasW, this._canvasH);
-    } else if (gs.cities.length > 0) {
-      const firstCity = gs.cities[0];
-      this.centerOn(firstCity.col, firstCity.row, this._canvasW, this._canvasH);
+    } else {
+      const firstCity = gs.cities.find(city => city.civId === 0);
+      if (firstCity) this.centerOn(firstCity.col, firstCity.row, this._canvasW, this._canvasH);
     }
   }
 
