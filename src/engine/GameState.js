@@ -196,6 +196,9 @@ export class GameState {
 
     /** Whether the UN election (id=63) has already been called this game. */
     this._unElectionUsed = false;
+    /** First spaceship launch changes the calendar to one year per turn. */
+    this._spaceRaceLaunchTurn = null;
+    this._spaceRaceLaunchYear = null;
 
     /**
      * Territory history for end-game replay map.
@@ -233,11 +236,28 @@ export class GameState {
 
     /** Game options — persisted in save data. */
     this._gameOptions = {
-      animations: true,
-      autoSave: true,
+      music: true,
+      soundEffects: true,
+      alwaysWait: true,
+      showEnemyMoves: true,
+      noPauseEnemyMoves: false,
+      fastPieceSlide: false,
+      instantAdvice: false,
       tutorialHelp: false,
-      productionAlerts: true,
-      endOfTurnMessages: true,
+      enterAdvances: true,
+      showMovePaths: true,
+      autoSave: true,
+    };
+    this._graphicOptions = {
+      throneRoom: true, diplomacyScreen: true, animatedHeralds: true,
+      civilopediaAdvances: true, highCouncil: true, wonderMovies: true,
+      hdSprites: false,
+    };
+    this._cityReportOptions = {
+      warnBuildCity: true, showCityImprovements: true, showNonCombatUnits: true,
+      showInitialBuildInstructions: true, announceDiscoveries: true,
+      announceOrder: true, announceWeLoveKing: true, warnFoodDecrease: true,
+      warnPollution: true, warnChangingProduction: true, zoomToCombat: true,
     };
 
     /** Casualty log: each entry { turn, unitTypeId, defenderCivId, killerCivId }. */
@@ -655,7 +675,12 @@ export class GameState {
     }
   }
 
-  get year() { return this._gameYear(this.turn); }
+  get year() {
+    if (this._spaceRaceLaunchTurn != null && this._spaceRaceLaunchYear != null) {
+      return this._spaceRaceLaunchYear + Math.max(0, this.turn - this._spaceRaceLaunchTurn);
+    }
+    return this._gameYear(this.turn);
+  }
 
   // ─── Visibility ────────────────────────────────────────────────────────────
   // (Moved to MapLogic.js mixin)
@@ -787,6 +812,11 @@ export class GameState {
       if (reactivated.length > 0) {
         this.activeUnit = reactivated[0];
       }
+    }
+    if (civIdx === 0 && !this.activeUnit && this._gameOptions?.alwaysWait === false) {
+      queueMicrotask(() => {
+        if (!this.gameOver && this.activeCivIdx === 0 && !this.activeUnit) this.endTurn();
+      });
     }
   }
 
@@ -1768,6 +1798,9 @@ export class GameState {
     if (!candidates.length) return;
     const pick = candidates[Math.floor(this.rng() * candidates.length)];
     this._tileImprovements[pick.r][pick.c].pollution = true;
+    if (city.civId === 0 && this._cityReportOptions?.warnPollution !== false) {
+      this._emit('pollutionCreated', { city, col: pick.c, row: pick.r });
+    }
   }
 
   /** Check total pollution count and potentially degrade terrain. */
@@ -2004,10 +2037,10 @@ export class GameState {
         // Infrastructure limits: Aqueduct needed above size 8, Sewer above size 12
         if (city.size >= COSMIC.sewerLimit && !city.improvements.has(23)) {
           city.food = foodNeeded - 1;
-          this._addLog(`${city.name} needs a Sewer System to grow!`);
+          if (this._cityReportOptions?.warnBuildCity !== false) this._addLog(`${city.name} needs a Sewer System to grow!`);
         } else if (city.size >= COSMIC.aqueductLimit && !city.improvements.has(9)) {
           city.food = foodNeeded - 1;
-          this._addLog(`${city.name} needs an Aqueduct to grow!`);
+          if (this._cityReportOptions?.warnBuildCity !== false) this._addLog(`${city.name} needs an Aqueduct to grow!`);
         } else {
           const hasGranary = city.improvements.has(3) || this._civHasWonder(city.civId, 39);
           city.food = hasGranary ? Math.floor(foodNeeded / 2) : 0;
@@ -2017,6 +2050,9 @@ export class GameState {
           this._emit('cityGrowth', { city });
         }
       } else if (city.food < 0) {
+        if (city.civId === 0 && this._cityReportOptions?.warnFoodDecrease !== false) {
+          this._emit('foodWarning', { city });
+        }
         if (city.size > 1) {
           city.size--;
           this._autoRemoveWorker(city);
@@ -2040,7 +2076,9 @@ export class GameState {
           const next = queued ?? (same.length ? same.reduce((a, b) => this._productionCost(a) < this._productionCost(b) ? a : b) : avail[0] || null);
           if (next) {
             city.production = { type: next.type, id: next.id };
-            this._addLog(`${city.name}: switched to ${next.name || 'new item'}`);
+            if (this._cityReportOptions?.showInitialBuildInstructions !== false) {
+              this._addLog(`${city.name}: switched to ${next.name || 'new item'}`);
+            }
           } else {
             city.production = null;
           }
@@ -2577,6 +2615,21 @@ export class GameState {
       // SS parts (35-37) are stackable — track in ssParts, not improvements
       if (id === 35 || id === 36 || id === 37) {
         city.ssParts[id] = (city.ssParts[id] ?? 0) + 1;
+        const ship = this.civs[city.civId]?.spaceship;
+        if (ship) {
+          if (id === 35) ship.structural++;
+          if (id === 36) ship.unassignedComponents++;
+          if (id === 37) ship.unassignedModules++;
+        }
+        if (city.civId !== 0 && id === 36) {
+          const progress = this.spaceshipProgress(city.civId);
+          this.assignSpaceshipPart(city.civId, progress.propulsion <= progress.fuel ? 'propulsion' : 'fuel');
+        }
+        if (city.civId !== 0 && id === 37) {
+          const progress = this.spaceshipProgress(city.civId);
+          const system = ['habitation', 'lifeSupport', 'solar'].sort((a, b) => progress[a] - progress[b])[0];
+          this.assignSpaceshipPart(city.civId, system);
+        }
       } else {
         city.improvements.add(id);
       }
@@ -2608,7 +2661,7 @@ export class GameState {
           for (const adv of picked) {
             civ.advances.add(adv.id);
             this._addLog(`Darwin's Voyage: ${civ?.data?.adjective ?? ''} discovers ${adv.name}!`);
-            this._emit('advance', { civ, advId: adv.id });
+            this._emit('advance', { civ, civId: civ.id, advId: adv.id });
           }
           if (civ.currentResearch && civ.advances.has(civ.currentResearch)) {
             civ.currentResearch = null;
@@ -2641,6 +2694,7 @@ export class GameState {
             for (const other of this.civs) {
               if (!other || !other.alive || other.id === city.civId) continue;
               ownerCiv.embassies.add(other.id);
+              this.establishContact(city.civId, other.id);
             }
             this._addLog(`Marco Polo's Embassy establishes relations with all civilizations!`);
           }
@@ -2663,13 +2717,18 @@ export class GameState {
       }
     }
 
+    const completed = { type, id };
     const nextQueued = this._dequeueNextProduction(city);
     if (nextQueued) {
       city.production = { type: nextQueued.type, id: nextQueued.id };
     } else if (city.civId !== 0) {
       this._aiPickProduction(city);
     } else {
-      city.production = null;
+      // Civ2 repeats the completed item until the player chooses a new one.
+      const available = this.availableProduction(city);
+      city.production = available.some(p => p.type === type && p.id === id)
+        ? completed
+        : (available[0] ? { type: available[0].type, id: available[0].id } : null);
     }
     return true;
   }
@@ -2860,7 +2919,7 @@ export class GameState {
       if (advId === 100) {
         civ.futureTechCount++;
         this._addLog(`${CIVS[civ.id]?.adjective ?? 'Player'} discovers Future Technology ${civ.futureTechCount}!`);
-        this._emit('advance', { civ, advId: 100 });
+        this._emit('advance', { civ, civId: civ.id, advId: 100 });
         civ.currentResearch = 100; // auto-continue researching future tech
         return;
       }
@@ -2870,7 +2929,7 @@ export class GameState {
       civ.advances.add(advId);
       if (civ.researchGoal === advId) civ.researchGoal = null;
       this._addLog(`${CIVS[civ.id]?.adjective ?? 'Player'} discovers ${adv?.name ?? '?'}!`);
-      this._emit('advance', { civ, advId });
+      this._emit('advance', { civ, civId: civ.id, advId });
       civ.currentResearch = null;
 
       // Scenario event: received technology
@@ -2926,7 +2985,7 @@ export class GameState {
         if (knownByCount >= 2) {
           civ.advances.add(advId);
           this._addLog(`The Great Library grants ${ADVANCES[advId]?.name ?? '?'} to ${CIVS[civ.id]?.adjective ?? 'the player'}!`);
-          this._emit('advance', { civ, advId });
+          this._emit('advance', { civ, civId: civ.id, advId });
           if (civ.currentResearch === advId) civ.currentResearch = null;
         }
       }
@@ -2997,11 +3056,33 @@ export class GameState {
 
   // ─── Diplomacy ─────────────────────────────────────────────────────────────
 
+  hasContact(civA, civB) {
+    if (civA === civB) return true;
+    return !!this.civs[civA]?.contacts?.has(civB);
+  }
+
+  establishContact(civA, civB) {
+    if (civA === civB || civA === this.barbarianCivIdx || civB === this.barbarianCivIdx) return false;
+    const a = this.civs[civA];
+    const b = this.civs[civB];
+    if (!a || !b) return false;
+    const isNew = !a.contacts.has(civB) || !b.contacts.has(civA);
+    a.contacts.add(civB);
+    b.contacts.add(civA);
+    if (isNew && (civA === 0 || civB === 0)) {
+      const other = civA === 0 ? b : a;
+      this._addLog(`Contact established with the ${other.data?.plural ?? 'foreign civilization'}.`);
+      this._emit('firstContact', { civId: other.id });
+    }
+    return isNew;
+  }
+
   isAtWar(civA, civB) {
     return this.civs[civA]?.relations.get(civB) === 'war';
   }
 
   _declareWarInternal(civA, civB) {
+    this.establishContact(civA, civB);
     if (this.isAtWar(civA, civB)) return;
     this.civs[civA]?.relations.set(civB, 'war');
     this.civs[civB]?.relations.set(civA, 'war');
@@ -3536,7 +3617,7 @@ export class GameState {
     myCiv.advances.add(stolenId);
     const advName = ADVANCES[stolenId]?.name ?? `Advance ${stolenId}`;
     this._addLog(`Stole ${advName} from the ${theirCiv.data?.plural ?? 'enemy'}!`);
-    this._emit('advance', { civ: myCiv, advId: stolenId });
+    this._emit('advance', { civ: myCiv, civId: myCiv.id, advId: stolenId });
 
     // Diplomat always consumed; Spy has 50% survival chance
     if (uData.id === 47 && this.rng() < 0.5) {
@@ -4788,6 +4869,7 @@ export class GameState {
         );
         this._worldPeaceTurns = worldAtPeace ? (this._worldPeaceTurns ?? 0) + 1 : 0;
         this._processTurn();
+        this._emit('turnStart', { turn: this.turn, year: this.year });
       }
       this._beginCivTurn(this.activeCivIdx);
       if (this.activeCivIdx !== 0) this._doAiTurn(this.activeCivIdx);
@@ -4902,40 +4984,6 @@ export class GameState {
       return;
     }
 
-    // UN Diplomatic Victory: if an AI civ built the UN and calls an election and wins,
-    // that triggers a loss for the human. The AI auto-calls the election when building.
-    // (Human election is triggered manually via proposeUnElection.)
-    // Check if any AI civ holds the UN and the election hasn't happened yet.
-    if (!this._unElectionUsed) {
-      for (const civ of this.civs.slice(1)) {
-        if (!civ || !civ.alive || civ.id === this.barbarianCivIdx) continue;
-        if (!this._civHasWonder(civ.id, 63)) continue;
-        // AI built UN: auto-call election
-        this._unElectionUsed = true;
-        const livingAI = this.civs.slice(1).filter(c => c && c.alive && c.id !== this.barbarianCivIdx && c.id !== civ.id);
-        const humanCiv = this.civs[0];
-        let forVotes = 0, againstVotes = 0;
-        for (const voter of livingAI) {
-          if ((voter.attitude.get(civ.id) ?? 0) >= 0) forVotes++;
-          else againstVotes++;
-        }
-        // Human player also votes — negative attitude means voting against AI
-        const humanAtt = humanCiv ? (humanCiv.attitude.get(civ.id) ?? 0) : 0;
-        if (humanAtt >= 0) forVotes++; else againstVotes++;
-        const won = forVotes > againstVotes;
-        if (won) {
-          this._addLog(`${civ.data.plural} win the UN election and become World Leader!`);
-          this.gameOver = { result: 'diplomatic-lose', score: this.score() };
-          this._emit('gameOver', this.gameOver);
-          this._emit('unElection', { won: true, winner: civ.id });
-          return;
-        } else {
-          this._addLog(`${civ.data.plural} called a UN election but failed to gain majority.`);
-          this._emit('unElection', { won: false, winner: civ.id });
-        }
-      }
-    }
-
     // Elimination victory: all AI civs extinct (no cities, no units)
     // Barbarians are excluded — you don't need to eliminate them to win
     const allAiDead = this.civs.slice(1).every(civ => {
@@ -4950,19 +4998,19 @@ export class GameState {
       return;
     }
 
-    // Space race: check if any civ has met the spaceship quota
+    // Space race: AI launches a viable ship; victory occurs only on arrival.
     if (this._apolloBuilt && !this.gameOver) {
-      // Check AI civs first (if AI wins, human loses)
       for (const civ of this.civs.slice(1)) {
-        if (!civ.alive) continue;
-        if (this.spaceshipReady(civ.id)) {
-          this.launchSpaceship(civ.id);
-          return;
-        }
+        if (!civ.alive || civ.id === this.barbarianCivIdx) continue;
+        if (!civ.spaceship?.launched && this.spaceshipReady(civ.id)) this.launchSpaceship(civ.id);
       }
-      // Check human
-      if (this.spaceshipReady(0)) {
-        this.launchSpaceship(0);
+
+      const arrived = this.civs
+        .filter(c => c?.alive && c.id !== this.barbarianCivIdx && c.spaceship?.launched && c.spaceship.arrivalYear <= this.year)
+        .sort((a, b) => a.spaceship.arrivalYear - b.spaceship.arrivalYear || a.id - b.id)[0];
+      if (arrived) {
+        this.gameOver = { result: arrived.id === 0 ? 'space-win' : 'space-lose', score: this.score() };
+        this._emit('gameOver', this.gameOver);
         return;
       }
     }
@@ -5466,7 +5514,7 @@ export class GameState {
   declareWar(targetCivId) {
     const player = this.civs[0];
     const target = this.civs[targetCivId];
-    if (!player || !target || !target.alive) return;
+    if (!player || !target || !target.alive || !this.hasContact(0, targetCivId)) return;
 
     // Reputation penalty for breaking existing treaties
     const prevRel = player.relations.get(targetCivId) ?? 'peace';
@@ -5497,7 +5545,7 @@ export class GameState {
   proposePeace(targetCivId) {
     const player = this.civs[0];
     const target = this.civs[targetCivId];
-    if (!player || !target || !target.alive) return false;
+    if (!player || !target || !target.alive || !this.hasContact(0, targetCivId)) return false;
 
     const rel = player.relations.get(targetCivId) ?? 'peace';
     if (rel === 'peace' || rel === 'alliance') return false; // already at peace
@@ -5527,7 +5575,7 @@ export class GameState {
   proposeCeasefire(targetCivId) {
     const player = this.civs[0];
     const target = this.civs[targetCivId];
-    if (!player || !target || !target.alive) return false;
+    if (!player || !target || !target.alive || !this.hasContact(0, targetCivId)) return false;
 
     const rel = player.relations.get(targetCivId) ?? 'peace';
     if (rel !== 'war') return false; // ceasefire only from war
@@ -5555,7 +5603,7 @@ export class GameState {
   proposeAlliance(targetCivId) {
     const player = this.civs[0];
     const target = this.civs[targetCivId];
-    if (!player || !target || !target.alive) return false;
+    if (!player || !target || !target.alive || !this.hasContact(0, targetCivId)) return false;
 
     const rel = player.relations.get(targetCivId) ?? 'peace';
     if (rel === 'war' || rel === 'ceasefire') return false;
@@ -5585,7 +5633,7 @@ export class GameState {
   payTribute(targetCivId, amount) {
     const player = this.civs[0];
     const target = this.civs[targetCivId];
-    if (!player || !target || !target.alive) return false;
+    if (!player || !target || !target.alive || !this.hasContact(0, targetCivId)) return false;
     if (player.gold < amount) return false;
 
     player.gold -= amount;
@@ -5597,47 +5645,9 @@ export class GameState {
     return true;
   }
 
-  /**
-   * Propose a UN election. The human must own the United Nations (id=63).
-   * Each living AI civ votes: +1 for owner if attitude >= 0, -1 against.
-   * Barbarians don't vote. Owner wins if votes_for > votes_against.
-   * Can only be called once per game (one election per UN build).
-   *
-   * Returns an object: { eligible, alreadyUsed, votes, forVotes, againstVotes, won }
-   */
+  /** Civ2 MGE has no diplomatic-victory election. Kept as a safe legacy API. */
   proposeUnElection() {
-    const ownsUN = this._civHasWonder(0, 63);
-    if (!ownsUN)        return { eligible: false };
-    if (this._unElectionUsed) return { eligible: true, alreadyUsed: true };
-
-    this._unElectionUsed = true;
-    const player = this.civs[0];
-
-    let forVotes = 0;
-    let againstVotes = 0;
-    const votes = [];
-    const livingAI = this.civs.slice(1).filter(c => c && c.alive && c.id !== this.barbarianCivIdx);
-
-    for (const civ of livingAI) {
-      const att = civ.attitude.get(0) ?? 0;
-      const votes_for = att >= 0;
-      if (votes_for) forVotes++;
-      else againstVotes++;
-      votes.push({ civId: civ.id, name: civ.data.plural, attitude: att, for: votes_for });
-    }
-
-    const won = forVotes > againstVotes && livingAI.length > 0;
-
-    if (won) {
-      this._addLog(`UN Election: The world votes you World Leader! Diplomatic Victory!`);
-      this.gameOver = { result: 'diplomatic-win', score: this.score() };
-      this._emit('gameOver', this.gameOver);
-    } else {
-      this._addLog(`UN Election: The world rejects your candidacy (${forVotes} for, ${againstVotes} against).`);
-    }
-
-    this._emit('unElection', { won, forVotes, againstVotes, votes });
-    return { eligible: true, alreadyUsed: false, votes, forVotes, againstVotes, won };
+    return { eligible: false, unsupported: true };
   }
 
   /**
@@ -5650,7 +5660,7 @@ export class GameState {
   offerTechTrade(targetCivId, myAdvId, theirAdvId) {
     const player = this.civs[0];
     const target = this.civs[targetCivId];
-    if (!player || !target || !target.alive) return false;
+    if (!player || !target || !target.alive || !this.hasContact(0, targetCivId)) return false;
 
     const accepted = this.aiWillAccept(targetCivId, 'techTrade', { myAdvId, theirAdvId });
     if (!accepted) {
@@ -5676,7 +5686,7 @@ export class GameState {
   shareMap(targetCivId) {
     const player = this.civs[0];
     const target = this.civs[targetCivId];
-    if (!player || !target || !target.alive) return false;
+    if (!player || !target || !target.alive || !this.hasContact(0, targetCivId)) return false;
 
     this.adjustAttitude(0, targetCivId, 5);
     this._addLog(`Shared maps with the ${target.data.plural}.`);
@@ -5686,12 +5696,17 @@ export class GameState {
 
   // ─── Space Race ────────────────────────────────────────────────────────────
 
-  /**
-   * Count how many SS parts a civ has built across all its cities.
-   * Returns { structural, component, module }.
-   * Quota: 8 structural + 4 component + 4 module.
-   */
+  /** Return the detailed MGE spaceship state, including unassigned parts. */
   spaceshipProgress(civIdx) {
+    const civ = this.civs[civIdx];
+    if (!civ) return null;
+    const ship = civ.spaceship ?? (civ.spaceship = {
+      structural: 0, propulsion: 0, fuel: 0, habitation: 0, lifeSupport: 0,
+      solar: 0, unassignedComponents: 0, unassignedModules: 0,
+      launched: false, launchYear: null, arrivalYear: null,
+    });
+
+    // Reconcile old saves that only stored aggregate city part counts.
     let structural = 0, component = 0, module = 0;
     for (const city of this.cities) {
       if (city.civId !== civIdx) continue;
@@ -5699,26 +5714,71 @@ export class GameState {
       component  += city.ssParts?.[36] ?? 0;
       module     += city.ssParts?.[37] ?? 0;
     }
-    return { structural, component, module };
+    ship.structural = Math.max(ship.structural ?? 0, structural);
+    const assignedComponents = (ship.propulsion ?? 0) + (ship.fuel ?? 0);
+    const assignedModules = (ship.habitation ?? 0) + (ship.lifeSupport ?? 0) + (ship.solar ?? 0);
+    ship.unassignedComponents = Math.max(ship.unassignedComponents ?? 0, component - assignedComponents);
+    ship.unassignedModules = Math.max(ship.unassignedModules ?? 0, module - assignedModules);
+    component = Math.max(component, assignedComponents + ship.unassignedComponents);
+    module = Math.max(module, assignedModules + ship.unassignedModules);
+    return { ...ship, component, module };
   }
 
-  /** Returns true if a civ meets the quota to launch their spaceship. */
-  spaceshipReady(civIdx) {
+  assignSpaceshipPart(civIdx, system) {
+    const ship = this.spaceshipProgress(civIdx);
+    if (!ship || ship.launched) return false;
+    const component = system === 'propulsion' || system === 'fuel';
+    const module = system === 'habitation' || system === 'lifeSupport' || system === 'solar';
+    if ((!component && !module) || ship[system] >= (component ? 8 : 4)) return false;
+    const source = component ? 'unassignedComponents' : 'unassignedModules';
+    const state = this.civs[civIdx].spaceship;
+    if (state[source] <= 0) return false;
+    state[source]--;
+    state[system]++;
+    return true;
+  }
+
+  spaceshipStats(civIdx) {
     const p = this.spaceshipProgress(civIdx);
-    return p.structural >= 8 && p.component >= 4 && p.module >= 4;
+    if (!p) return null;
+    const pairs = Math.min(p.propulsion, p.fuel);
+    const supported = Math.min(p.habitation, p.lifeSupport, p.solar);
+    const population = p.habitation * 10000;
+    const support = p.habitation > 0 ? Math.min(100, Math.round(p.lifeSupport / p.habitation * 100)) : 0;
+    const energy = (p.habitation + p.lifeSupport) > 0
+      ? Math.min(100, Math.round((p.solar * 2) / (p.habitation + p.lifeSupport) * 100)) : 0;
+    const connected = p.structural >= 15;
+    const success = connected && pairs > 0 && supported > 0 ? Math.min(support, energy) : 0;
+    const fusion = this.civs[civIdx]?.advances?.has(32);
+    const baseYears = fusion ? 36.1 : 48.4;
+    const massFactor = Math.sqrt(Math.max(1, (p.structural + p.component * 2 + p.module * 4) / 23));
+    const flightYears = pairs > 0 ? Math.max(1, Math.round((baseYears * massFactor / Math.pow(pairs, 0.75)) * 10) / 10) : Infinity;
+    return { ...p, population, support, energy, success, flightYears, connected };
   }
 
-  /** Launch the spaceship for the given civ, triggering the appropriate victory/defeat. */
+  /** A viable ship needs connected structure and one of every working system. */
+  spaceshipReady(civIdx) {
+    const p = this.spaceshipStats(civIdx);
+    return !!p && !p.launched && p.connected && p.propulsion >= 1 && p.fuel >= 1 &&
+      p.habitation >= 1 && p.lifeSupport >= 1 && p.solar >= 1 && p.success > 0;
+  }
+
+  /** Launch begins the journey; victory is awarded only on Alpha Centauri arrival. */
   launchSpaceship(civIdx) {
-    if (this.gameOver) return;
-    if (civIdx === 0) {
-      this.gameOver = { result: 'space-win', score: this.score() };
-    } else {
-      // AI civ wins — human loses (unless human already launched)
-      this.gameOver = { result: 'space-lose', score: this.score() };
+    if (this.gameOver || !this.spaceshipReady(civIdx)) return false;
+    const stats = this.spaceshipStats(civIdx);
+    const ship = this.civs[civIdx].spaceship;
+    const launchYear = this.year;
+    ship.launched = true;
+    ship.launchYear = launchYear;
+    ship.arrivalYear = launchYear + Math.ceil(stats.flightYears);
+    if (this._spaceRaceLaunchTurn == null) {
+      this._spaceRaceLaunchTurn = this.turn;
+      this._spaceRaceLaunchYear = launchYear;
     }
-    this._emit('gameOver', this.gameOver);
-    this._emit('spaceshipLaunched', { civIdx });
+    this._addLog(`${this.civs[civIdx].data?.plural ?? 'A civilization'} launch a spaceship! Estimated arrival: ${ship.arrivalYear}.`);
+    this._emit('spaceshipLaunched', { civIdx, launchYear, arrivalYear: ship.arrivalYear });
+    return true;
   }
 
   // ─── Unit Upgrades ─────────────────────────────────────────────────────────
@@ -5810,6 +5870,8 @@ export class GameState {
       apolloBuilt:    this._apolloBuilt,
       manhattanBuilt: this._manhattanBuilt,
       unElectionUsed: this._unElectionUsed,
+      spaceRaceLaunchTurn: this._spaceRaceLaunchTurn,
+      spaceRaceLaunchYear: this._spaceRaceLaunchYear,
 
       tiles:        this.tiles.map(row => row.map(t => t?.id ?? 0)),
       resources:    this._resources.map(row => Array.from(row)),
@@ -5840,6 +5902,8 @@ export class GameState {
         attitude:            [...civ.attitude.entries()],
         reputation:          civ.reputation,
         embassies:           [...civ.embassies],
+        contacts:            [...civ.contacts],
+        spaceship:           { ...civ.spaceship },
         futureTechCount:     civ.futureTechCount ?? 0,
       })),
 
@@ -5898,6 +5962,8 @@ export class GameState {
       maxTurns:       this._maxTurns ?? 0,
       scenarioEvents: this._scenarioEvents ?? [],
       gameOptions:    { ...(this._gameOptions ?? {}) },
+      graphicOptions: { ...(this._graphicOptions ?? {}) },
+      cityReportOptions: { ...(this._cityReportOptions ?? {}) },
       casualties:     [...(this._casualties ?? [])],
       powerHistory:   [...(this._powerHistory ?? [])],
     };
@@ -5959,6 +6025,8 @@ export class GameState {
      gs._apolloBuilt    = data.apolloBuilt    ?? false;
      gs._manhattanBuilt = data.manhattanBuilt ?? false;
      gs._unElectionUsed = data.unElectionUsed ?? false;
+     gs._spaceRaceLaunchTurn = data.spaceRaceLaunchTurn ?? null;
+     gs._spaceRaceLaunchYear = data.spaceRaceLaunchYear ?? null;
      gs.onEvent         = null;
 
     // ── Civilizations ───────────────────────────────────────────────────────
@@ -5989,6 +6057,8 @@ export class GameState {
       civ.attitude    = new Map((cd.attitude ?? []).map(([k, v]) => [parseInt(k, 10), v]));
       civ.reputation  = cd.reputation ?? 50;
       civ.embassies   = new Set(cd.embassies ?? []);
+      civ.contacts    = new Set(cd.contacts ?? []);
+      civ.spaceship   = { ...civ.spaceship, ...(cd.spaceship ?? {}) };
       civ.futureTechCount = cd.futureTechCount ?? 0;
       return civ;
     });
@@ -6059,12 +6129,23 @@ export class GameState {
     gs._scenarioName = data.scenarioName ?? null;
     gs._maxTurns     = data.maxTurns ?? 0;
     gs._scenarioEvents = data.scenarioEvents ?? [];
-    gs._gameOptions    = data.gameOptions ?? {
-      animations: true,
-      autoSave: true,
-      tutorialHelp: false,
-      productionAlerts: true,
-      endOfTurnMessages: true,
+    gs._gameOptions = {
+      music: true, soundEffects: true, alwaysWait: true, showEnemyMoves: true,
+      noPauseEnemyMoves: false, fastPieceSlide: false, instantAdvice: false,
+      tutorialHelp: false, enterAdvances: true, showMovePaths: true, autoSave: true,
+      ...(data.gameOptions ?? {}),
+    };
+    gs._graphicOptions = {
+      throneRoom: true, diplomacyScreen: true, animatedHeralds: true,
+      civilopediaAdvances: true, highCouncil: true, wonderMovies: true,
+      hdSprites: false, ...(data.graphicOptions ?? {}),
+    };
+    gs._cityReportOptions = {
+      warnBuildCity: true, showCityImprovements: true, showNonCombatUnits: true,
+      showInitialBuildInstructions: true, announceDiscoveries: true,
+      announceOrder: true, announceWeLoveKing: true, warnFoodDecrease: true,
+      warnPollution: true, warnChangingProduction: true, zoomToCombat: true,
+      ...(data.cityReportOptions ?? {}),
     };
     gs._casualties     = data.casualties ?? [];
     gs._powerHistory   = data.powerHistory ?? [];

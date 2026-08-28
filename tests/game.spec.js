@@ -952,6 +952,26 @@ test.describe('New Game Dialog', () => {
     expect(await renderAt(0, { customizeStep: 0 })).toEqual({ x: 390, y: 311, w: 500, h: 178 });
   });
 
+  test('tribe selector fits the original 800-pixel desktop width', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 600 });
+    await openWizard(page);
+    const layout = await page.evaluate(() => {
+      const screen = window.__civ2.mapScreen;
+      const canvas = document.getElementById('game-canvas');
+      screen._wizard.step = 6;
+      screen.render(canvas.getContext('2d'), canvas.width, canvas.height);
+      return {
+        dialog: screen._wizardDialogRect,
+        controls: screen._wizardRects.map(r => ({ x: r.x, right: r.x + r.w })),
+        width: canvas.width,
+      };
+    });
+
+    expect(layout.dialog.x).toBeGreaterThanOrEqual(0);
+    expect(layout.dialog.x + layout.dialog.w).toBeLessThanOrEqual(layout.width);
+    expect(layout.controls.every(r => r.x >= 0 && r.right <= layout.width)).toBe(true);
+  });
+
   test('Cancel returns to title screen', async ({ page }) => {
     await openWizard(page);
     // Pressing Escape on step 0 returns to title screen
@@ -1418,13 +1438,11 @@ test.describe('Bug reports', () => {
       const screen = window.__civ2.mapScreen;
       const canvas = document.getElementById('game-canvas');
 
-      // Render the Game dropdown to prove the feature is exposed as a genuine
-      // menu item, then close it before capturing the underlying game scene.
+      // Render and click the genuine Game-menu item. The click itself must be
+      // present in the diagnostic traceback while the menu stays out of the PNG.
       screen._openMenu = 0;
       screen.render(canvas.getContext('2d'), canvas.width, canvas.height);
       const menuItem = screen._menuItemRects.find(item => item.action === 'game_reportbug');
-      screen._openMenu = null;
-      screen._menuItemRects = [];
 
       screen.viewX = 96;
       screen.viewY = 48;
@@ -1437,7 +1455,7 @@ test.describe('Bug reports', () => {
         reportDrawsDuringCapture++;
         return originalDraw.apply(this, args);
       };
-      screen._executeMenuAction(menuItem.action);
+      screen.handleRawClick(menuItem.x + menuItem.w / 2, menuItem.y + menuItem.h / 2, canvas.width, canvas.height);
       const drawsBeforeNextTask = reportDrawsDuringCapture;
       const file = await screen._bugReportDialog.promise;
       screen._drawBugReportDialog = originalDraw;
@@ -1478,6 +1496,7 @@ test.describe('Bug reports', () => {
         restoredTurn: restored.turn,
         capturedTurn: stateBefore.turn,
         rendererState: report.rendererState,
+        recentClicks: report.recentClicks,
         reportFormat: report.format,
         drawsBeforeNextTask,
       };
@@ -1497,8 +1516,62 @@ test.describe('Bug reports', () => {
     expect(result.stateMatches).toBe(true);
     expect(result.restoredTurn).toBe(result.capturedTurn);
     expect(result.rendererState).toMatchObject({ viewX: 96, viewY: 48, zoomLevel: 2 });
+    expect(result.recentClicks.at(-1)).toMatchObject({
+      kind: 'click',
+      screenBefore: { name: 'menu', menu: 'Game' },
+      screenAfter: { name: 'bug-report', status: 'capturing' },
+      action: { source: 'menu', id: 'game_reportbug' },
+    });
     expect(result.reportFormat).toBe('civ2-web-bug-report');
     expect(result.drawsBeforeNextTask, 'report UI must not appear inside its own screenshot').toBe(0);
+  });
+
+  test('click traceback keeps only ten screen transitions and excludes typed city names', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const screen = window.__civ2.mapScreen;
+      const canvas = document.getElementById('game-canvas');
+      screen._initInteractionTrace();
+
+      // Safe title-bar clicks exercise the real canvas click entry point without
+      // changing game state.
+      for (let i = 0; i < 12; i++) {
+        screen.handleRawClick(20 + i, 5, canvas.width, canvas.height);
+        await Promise.resolve();
+      }
+
+      // A city name is user-entered text and must never be copied into the trace.
+      const privateName = 'PRIVATE CITY NAME MUST NOT LEAK';
+      screen._cityNamingDialog = { name: privateName, cursor: privateName.length };
+      screen.handleRawClick(40, 5, canvas.width, canvas.height);
+      await Promise.resolve();
+      screen._cityNamingDialog = null;
+
+      // Include one ordinary map context click to verify resolved tile
+      // coordinates and right-click coverage.
+      screen.gameState.activeCivIdx = 0;
+      screen.handleRightClick(600, 400, canvas.width, canvas.height);
+      await Promise.resolve();
+
+      const trace = screen._interactionTraceForReport();
+      return {
+        trace,
+        serialized: JSON.stringify(trace),
+        privateName,
+      };
+    });
+
+    expect(result.trace).toHaveLength(10);
+    expect(result.trace[0].sequence).toBe(5);
+    expect(result.trace.at(-1).sequence).toBe(14);
+    expect(result.trace.at(-2).screenBefore).toEqual({ name: 'city-naming' });
+    expect(result.trace.at(-1).mapTile).toEqual({
+      col: expect.any(Number),
+      row: expect.any(Number),
+    });
+    expect(result.trace.at(-1).kind).toBe('right-click');
+    expect(result.trace.at(-1).screenBefore).toEqual({ name: 'map' });
+    expect(result.trace.at(-1).screenAfter.name).toBe('tile-information');
+    expect(result.serialized).not.toContain(result.privateName);
   });
 
   test('Share / Email passes the ZIP to the system share sheet and GitHub opens a prepared issue', async ({ page }) => {
@@ -2260,6 +2333,7 @@ test.describe('Diplomacy System', () => {
       // Find a living AI civ
       const aiCiv = gs.civs.find(c => c.id !== 0 && c.alive);
       if (!aiCiv) return { skip: true };
+      gs.establishContact(0, aiCiv.id);
       // Force war
       gs.civs[0].relations.set(aiCiv.id, 'war');
       gs.civs[aiCiv.id].relations.set(0, 'war');
@@ -2284,6 +2358,7 @@ test.describe('Diplomacy System', () => {
       const gs = window.__civ2.mapScreen.gameState;
       const aiCiv = gs.civs.find(c => c.id !== 0 && c.alive);
       if (!aiCiv) return { skip: true };
+      gs.establishContact(0, aiCiv.id);
       // Ensure peace
       gs.civs[0].relations.set(aiCiv.id, 'peace');
       gs.civs[aiCiv.id].relations.set(0, 'peace');
@@ -2327,6 +2402,7 @@ test.describe('Diplomacy System', () => {
       const gs = window.__civ2.mapScreen.gameState;
       const aiCiv = gs.civs.find(c => c.id !== 0 && c.alive);
       if (!aiCiv) return { skip: true };
+      gs.establishContact(0, aiCiv.id);
       gs.civs[0].gold = 200;
       gs.civs[aiCiv.id].attitude.set(0, 0); // start at neutral
       const goldBefore = gs.civs[0].gold;
@@ -3121,6 +3197,7 @@ test.describe('Zone of Control', () => {
       const mover = gs._spawnUnit(2, 0, pos.src.col, pos.src.row);
       mover.movesLeft = 30;
       gs._spawnUnit(2, 1, pos.enemy.col, pos.enemy.row); // enemy adjacent to both src & dst
+      gs.establishContact(0, 1);
       gs.declareWar(1);
       const moved = gs.moveUnit(mover, pos.dst.col, pos.dst.row);
       return { moved, movedCol: mover.col, srcCol: pos.src.col };
@@ -3156,6 +3233,7 @@ test.describe('Zone of Control', () => {
       const mover = gs._spawnUnit(46, 0, pos.src.col, pos.src.row);
       mover.movesLeft = 30;
       gs._spawnUnit(2, 1, pos.enemy.col, pos.enemy.row);
+      gs.establishContact(0, 1);
       gs.declareWar(1);
       const moved = gs.moveUnit(mover, pos.dst.col, pos.dst.row);
       return { moved, dstCol: pos.dst.col, movedCol: mover.col };
@@ -3191,6 +3269,7 @@ test.describe('Zone of Control', () => {
       mover.movesLeft = 30;
       gs._spawnUnit(2, 0, pos.dst.col, pos.dst.row); // friendly unit at destination
       gs._spawnUnit(2, 1, pos.enemy.col, pos.enemy.row);
+      gs.establishContact(0, 1);
       gs.declareWar(1);
       const moved = gs.moveUnit(mover, pos.dst.col, pos.dst.row);
       return { moved };
@@ -4119,106 +4198,21 @@ test.describe('Score Formula', () => {
   });
 });
 
-test.describe('Diplomatic Victory', () => {
-  test('proposeUnElection wins when majority civs have positive attitude', async ({ page }) => {
+test.describe('MGE Victory Conditions', () => {
+  test('United Nations cannot trigger a non-MGE diplomatic victory', async ({ page }) => {
     await gotoGame(page);
     await startTestGame(page);
-
     const result = await page.evaluate(() => {
       const gs = window.__civ2.mapScreen.gameState;
       const settler = gs.units.find(u => u.civId === 0);
       gs.foundCity(settler);
-      const city = gs.cities.find(c => c.civId === 0);
-      // Give human the UN wonder
-      city.improvements.add(63);
-
-      // Set all AI civs to positive attitude toward human
-      for (const civ of gs.civs.slice(1)) {
-        if (!civ || !civ.alive) continue;
-        civ.attitude.set(0, 50); // positive
-      }
-
-      const electionResult = gs.proposeUnElection();
-      return {
-        eligible: electionResult.eligible,
-        won: electionResult.won,
-        gameOverResult: gs.gameOver?.result,
-      };
+      gs.cities.find(c => c.civId === 0).improvements.add(63);
+      const election = gs.proposeUnElection();
+      gs._checkVictory();
+      return { election, gameOver: gs.gameOver };
     });
-
-    expect(result.eligible).toBe(true);
-    expect(result.won).toBe(true);
-    expect(result.gameOverResult).toBe('diplomatic-win');
-  });
-
-  test('proposeUnElection fails when majority civs have negative attitude', async ({ page }) => {
-    await gotoGame(page);
-    await startTestGame(page);
-
-    const result = await page.evaluate(() => {
-      const gs = window.__civ2.mapScreen.gameState;
-      const settler = gs.units.find(u => u.civId === 0);
-      gs.foundCity(settler);
-      const city = gs.cities.find(c => c.civId === 0);
-      city.improvements.add(63);
-
-      // Set all AI civs to negative attitude toward human
-      for (const civ of gs.civs.slice(1)) {
-        if (!civ || !civ.alive) continue;
-        civ.attitude.set(0, -50); // negative
-      }
-
-      const electionResult = gs.proposeUnElection();
-      return {
-        eligible: electionResult.eligible,
-        won: electionResult.won,
-        gameOver: gs.gameOver,
-      };
-    });
-
-    expect(result.eligible).toBe(true);
-    expect(result.won).toBe(false);
+    expect(result.election).toMatchObject({ eligible: false, unsupported: true });
     expect(result.gameOver).toBeNull();
-  });
-
-  test('proposeUnElection requires owning UN wonder', async ({ page }) => {
-    await gotoGame(page);
-    await startTestGame(page);
-
-    const result = await page.evaluate(() => {
-      const gs = window.__civ2.mapScreen.gameState;
-      const electionResult = gs.proposeUnElection();
-      return { eligible: electionResult.eligible };
-    });
-
-    expect(result.eligible).toBe(false);
-  });
-
-  test('election can only be called once', async ({ page }) => {
-    await gotoGame(page);
-    await startTestGame(page);
-
-    const result = await page.evaluate(() => {
-      const gs = window.__civ2.mapScreen.gameState;
-      const settler = gs.units.find(u => u.civId === 0);
-      gs.foundCity(settler);
-      const city = gs.cities.find(c => c.civId === 0);
-      city.improvements.add(63);
-
-      // Set positive attitudes
-      for (const civ of gs.civs.slice(1)) {
-        if (civ?.alive) civ.attitude.set(0, 50);
-      }
-
-      gs.proposeUnElection(); // first call wins
-      gs.gameOver = null; // reset to test second call
-      gs._unElectionUsed; // should be true
-      const secondResult = gs.proposeUnElection();
-      return { alreadyUsed: secondResult.alreadyUsed, unElectionUsed: gs._unElectionUsed };
-    });
-
-    expect(result.alreadyUsed).toBe(true);
-    expect(result.unElectionUsed).toBe(true);
   });
 });
 
@@ -6308,6 +6302,7 @@ test.describe('AI Improvements', () => {
       }
       if (!humanCity) return { hasTarget: false };
       // Declare war so AI targets human
+      gs.establishContact(0, 1);
       gs.declareWar(1);
       // Spawn AI military unit on a land tile
       const landTile = gs._landTiles()[0];
@@ -6939,6 +6934,222 @@ test.describe('City Report Options', () => {
     });
     expect(result.allVisible).toBe(true);
     expect(result.foodHidden).toBe(true);
+  });
+});
+
+test.describe('Human playthrough regressions', () => {
+  test('research completion emits civId and opens the discovery report', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      const gs = ms.gameState;
+      const civ = gs.civs[0];
+      const advance = gs.availableAdvances(0)[0];
+      civ.currentResearch = advance.id;
+      civ.beakers = gs.advanceCost(civ);
+      let payload = null;
+      const rendererHandler = gs.onEvent;
+      gs.onEvent = (type, data) => {
+        if (type === 'advance') payload = { civId: data.civId, advId: data.advId };
+        rendererHandler?.(type, data);
+      };
+      gs._doResearch(civ);
+      return { payload, popup: ms._advancePopup };
+    });
+    expect(result.payload.civId).toBe(0);
+    expect(result.popup).toMatchObject({ advId: result.payload.advId });
+  });
+
+  test('Foreign Advisor lists only civilizations that have been contacted', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page, { numCivs: 3 });
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      const gs = ms.gameState;
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280; canvas.height = 800;
+      ms._drawDiplomacyScreen(canvas.getContext('2d'), canvas.width, canvas.height);
+      const before = ms._diplomacyScreenRects.filter(r => r.action === 'contact').map(r => r.civId);
+      gs.establishContact(0, 1);
+      ms._drawDiplomacyScreen(canvas.getContext('2d'), canvas.width, canvas.height);
+      const after = ms._diplomacyScreenRects.filter(r => r.action === 'contact').map(r => r.civId);
+      const restored = gs.constructor.fromSaveData(gs.toSaveData());
+      return { before, after, savedContact: restored.hasContact(0, 1) };
+    });
+    expect(result.before).toEqual([]);
+    expect(result.after).toEqual([1]);
+    expect(result.savedContact).toBe(true);
+  });
+
+  test('a garrisoned city opens before unit or tile actions in both view modes', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      const gs = ms.gameState;
+      const settler = gs.units.find(u => u.civId === 0);
+      const city = gs.foundCity(settler);
+      gs._spawnUnit(2, 0, city.col, city.row);
+      ms._viewOnlyMode = true;
+      ms._handleTileClick({ col: city.col, row: city.row });
+      const viewOpened = ms._cityScreen === city;
+      ms._cityScreen = null;
+      ms._viewOnlyMode = false;
+      ms._handleTileClick({ col: city.col, row: city.row });
+      return { viewOpened, moveOpened: ms._cityScreen === city };
+    });
+    expect(result).toEqual({ viewOpened: true, moveOpened: true });
+  });
+
+  test('spaceship requires configuration and explicit launch, then wins on arrival', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const gs = window.__civ2.mapScreen.gameState;
+      const settler = gs.units.find(u => u.civId === 0);
+      const city = gs.foundCity(settler);
+      city.ssParts = { 35: 15, 36: 2, 37: 3 };
+      gs._apolloBuilt = true;
+      gs.spaceshipProgress(0);
+      gs.assignSpaceshipPart(0, 'propulsion');
+      gs.assignSpaceshipPart(0, 'fuel');
+      gs.assignSpaceshipPart(0, 'habitation');
+      gs.assignSpaceshipPart(0, 'lifeSupport');
+      gs.assignSpaceshipPart(0, 'solar');
+      gs._checkVictory();
+      const beforeLaunch = { launched: gs.civs[0].spaceship.launched, gameOver: gs.gameOver };
+      const launched = gs.launchSpaceship(0);
+      const afterLaunch = { gameOver: gs.gameOver, arrivalYear: gs.civs[0].spaceship.arrivalYear };
+      gs.turn += Math.ceil(gs.spaceshipStats(0).flightYears);
+      gs._checkVictory();
+      return { beforeLaunch, launched, afterLaunch, result: gs.gameOver?.result };
+    });
+    expect(result.beforeLaunch).toEqual({ launched: false, gameOver: null });
+    expect(result.launched).toBe(true);
+    expect(result.afterLaunch.gameOver).toBeNull();
+    expect(result.result).toBe('space-win');
+  });
+
+  test('completed production repeats instead of clearing to an accidental default', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const gs = window.__civ2.mapScreen.gameState;
+      const settler = gs.units.find(u => u.civId === 0);
+      const city = gs.foundCity(settler);
+      city.production = { type: 'unit', id: 2 };
+      const completed = gs._completeProduction(city);
+      return { completed, production: city.production };
+    });
+    expect(result.completed).toBe(true);
+    expect(result.production).toEqual({ type: 'unit', id: 2 });
+  });
+
+  test('option dialogs stage changes and Cancel restores the original value', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      const canvas = document.createElement('canvas'); canvas.width = 1280; canvas.height = 800;
+      const ctx = canvas.getContext('2d');
+      const click = r => ms.handleRawClick(r.x + 2, r.y + 2, canvas.width, canvas.height);
+      const initial = ms.gameState._gameOptions.soundEffects;
+      ms._executeMenuAction('game_options');
+      ms._drawGameOptionsDialog(ctx, canvas.width, canvas.height);
+      click(ms._gameOptionsRects.find(r => r.key === 'soundEffects'));
+      click(ms._gameOptionsRects.find(r => r.key === '_cancel'));
+      const afterCancel = ms.gameState._gameOptions.soundEffects;
+      ms._executeMenuAction('game_options');
+      ms._drawGameOptionsDialog(ctx, canvas.width, canvas.height);
+      click(ms._gameOptionsRects.find(r => r.key === 'soundEffects'));
+      click(ms._gameOptionsRects.find(r => r.key === '_ok'));
+      return { initial, afterCancel, afterOk: ms.gameState._gameOptions.soundEffects };
+    });
+    expect(result.afterCancel).toBe(result.initial);
+    expect(result.afterOk).toBe(!result.initial);
+  });
+
+  test('stopping a stale music element cannot start another retry loop', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const audioManager = window.__civ2.mapScreen.audio;
+      const OriginalAudio = window.Audio;
+      class FakeAudio extends EventTarget {
+        pause() {}
+        load() { this.dispatchEvent(new Event('error')); }
+        removeAttribute() {}
+      }
+      window.Audio = FakeAudio;
+      audioManager._musicReady = true;
+      audioManager._currentEra = 'ancient';
+      audioManager._musicFailureCount = 0;
+      audioManager._playMusicTrackInternal('Broken Track');
+      audioManager._stopMusic();
+      const failures = audioManager._musicFailureCount;
+      const retryScheduled = audioManager._musicRetryTimer !== null;
+      window.Audio = OriginalAudio;
+      return { failures, retryScheduled };
+    });
+    expect(result).toEqual({ failures: 0, retryScheduled: false });
+  });
+
+  test('event videos block advisor shortcuts until the video closes', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      ms._domesticAdvisor = false;
+      ms._playEventVideo('ANARCHY0.webm');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true, cancelable: true }));
+      const blocked = !ms._domesticAdvisor && !!ms._eventVideo;
+      ms._stopEventVideo();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F1', bubbles: true, cancelable: true }));
+      return { blocked, openedAfter: ms._domesticAdvisor };
+    });
+    expect(result).toEqual({ blocked: true, openedAfter: true });
+  });
+
+  test('replay map is rendered without the game-over dialog covering it', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      const canvas = document.createElement('canvas'); canvas.width = 1280; canvas.height = 800;
+      let replayCalls = 0, gameOverCalls = 0;
+      const replay = ms._drawReplayMap.bind(ms);
+      const gameOver = ms._drawGameOver.bind(ms);
+      ms._drawReplayMap = (...args) => { replayCalls++; return replay(...args); };
+      ms._drawGameOver = (...args) => { gameOverCalls++; return gameOver(...args); };
+      ms.gameState.gameOver = { result: 'win', score: 1 };
+      ms._replayMap = true;
+      ms.render(canvas.getContext('2d'), canvas.width, canvas.height);
+      return { replayCalls, gameOverCalls };
+    });
+    expect(result.replayCalls).toBe(1);
+    expect(result.gameOverCalls).toBe(0);
+  });
+
+  test('Shift+F1 creates a unit only after Cheat Mode is enabled', async ({ page }) => {
+    await gotoGame(page);
+    await startTestGame(page);
+    const result = await page.evaluate(() => {
+      const ms = window.__civ2.mapScreen;
+      const gs = ms.gameState;
+      const unit = gs.units.find(u => u.civId === 0);
+      ms._editorTargetTile = { col: unit.col, row: unit.row };
+      const before = gs.units.length;
+      const event = { key: 'F1', shiftKey: true, ctrlKey: false, preventDefault() {} };
+      ms._handleGameKey(event);
+      const whileOff = gs.units.length;
+      ms._executeMenuAction('cheat_toggle');
+      ms._handleGameKey(event);
+      return { before, whileOff, after: gs.units.length, domestic: ms._domesticAdvisor };
+    });
+    expect(result.whileOff).toBe(result.before);
+    expect(result.after).toBe(result.before + 1);
+    expect(result.domestic).toBe(true);
   });
 });
 

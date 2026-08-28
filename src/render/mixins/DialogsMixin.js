@@ -294,6 +294,7 @@ export function applyDialogsMixin(MapRenderer) {
 
   MapRenderer.prototype._startHeraldVideo = function(civId) {
     this._stopHeraldVideo();
+    if (this.gameState?._graphicOptions?.animatedHeralds === false) return;
     const code = HERALD_FILES[civId];
     if (!code) return;
     const video = document.createElement('video');
@@ -321,7 +322,7 @@ export function applyDialogsMixin(MapRenderer) {
     const gs      = this.gameState;
     const FA      = "'Tahoma','Arial','Arimo',sans-serif";
     // Barbarians have no diplomacy screen or herald in MGE.
-    const others  = gs.civs.filter(c => c.id !== 0 && c.id !== gs.barbarianCivIdx && c.alive);
+    const others  = gs.civs.filter(c => c.id !== 0 && c.id !== gs.barbarianCivIdx && c.alive && gs.hasContact(0, c.id));
 
     const ROW_H = 52;
     const PW    = Math.min(460, canvasW - 40);
@@ -476,7 +477,8 @@ export function applyDialogsMixin(MapRenderer) {
 
     const PW = 480, PH = 380;
     const HERALD_W = 190, HERALD_GAP = 8;
-    const showHerald = canvasW >= PW + HERALD_W + HERALD_GAP + 20;
+    const showHerald = this.gameState._graphicOptions?.diplomacyScreen !== false &&
+      canvasW >= PW + HERALD_W + HERALD_GAP + 20;
     const totalW = PW + (showHerald ? HERALD_W + HERALD_GAP : 0);
     const px = Math.round((canvasW - totalW) / 2) + (showHerald ? HERALD_W + HERALD_GAP : 0);
     const py = Math.round((canvasH - PH) / 2);
@@ -862,9 +864,24 @@ export function applyDialogsMixin(MapRenderer) {
       if (this._wonderSplash) {
         this._stopWonderVideo();
         this._wonderSplash = null;
+        if (this._pendingThroneUpgradeDialog) {
+          this._pendingThroneUpgradeDialog = false;
+          this._throneUpgradeDialog = true;
+          this._throneUpgradeRects = [];
+        }
       }
     });
     this._wonderVideo = vid;
+  }
+
+  MapRenderer.prototype._dismissWonderSplash = function() {
+    this._stopWonderVideo();
+    this._wonderSplash = null;
+    if (this._pendingThroneUpgradeDialog) {
+      this._pendingThroneUpgradeDialog = false;
+      this._throneUpgradeDialog = true;
+      this._throneUpgradeRects = [];
+    }
   }
 
   MapRenderer.prototype._stopWonderVideo = function() {

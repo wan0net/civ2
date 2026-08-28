@@ -1075,7 +1075,8 @@ export function applyCityScreenMixin(MapRenderer) {
       ctx.font = `bold ${vs(11)}px ${FONT_TIMES}`;
       ctx.fillStyle = isSelected ? '#ffffff' : '#222222';
       ctx.textAlign = 'right';
-      ctx.fillText(facts, vx(OPX + OPW - 9), vy(iy + 15));
+      const factsRight = items.length > rowsVis ? OPX + OPW - 26 : OPX + OPW - 9;
+      ctx.fillText(facts, vx(factsRight), vy(iy + 15));
       ctx.textAlign = 'left';
       this._cityScreenItemRects.push({ ...vfr(OPX + 6, iy, OPW - 12, rowH), item });
     }
@@ -1158,11 +1159,17 @@ export function applyCityScreenMixin(MapRenderer) {
           gs.sellImprovement(city, this._pendingSellImpId);
           this._pendingSellImpId = null;
         }
+        if (this._pendingProductionChange) {
+          gs.changeProduction(city, this._pendingProductionChange);
+          this._pendingProductionChange = null;
+          this._cityScreenProdList = false;
+        }
         this._cityPopupText = null;
         return;
       }
       if (hit(this._cityPopupNoRect)) {
         this._pendingSellImpId = null;
+        this._pendingProductionChange = null;
         this._cityPopupText = null;
         return;
       }
@@ -1250,7 +1257,16 @@ export function applyCityScreenMixin(MapRenderer) {
       }
       if (hit(this._cityScreenOkRect)) {
         const selected = this._cityScreenProductionSelection;
-        if (selected) gs.changeProduction(this._cityScreen, { type: selected.type, id: selected.id });
+        if (selected) {
+          const next = { type: selected.type, id: selected.id };
+          const changedCategory = city.production && city.production.type !== next.type && city.shields > 0;
+          if (changedCategory && gs._cityReportOptions?.warnChangingProduction !== false) {
+            this._pendingProductionChange = next;
+            this._showCityPopup('Changing production will waste shields. Continue?', true);
+            return;
+          }
+          gs.changeProduction(this._cityScreen, next);
+        }
         this._cityScreenProdList = false;
         return;
       }

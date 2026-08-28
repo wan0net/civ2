@@ -184,6 +184,18 @@ export function applyMapLogicMixin(GameState) {
       if (city.civId !== 0) continue;
       for (const t of this._tilesInRange(city.col, city.row, 2)) reveal(t.col, t.row);
     }
+
+    // Diplomacy starts only after an opposing unit or city is encountered.
+    for (const unit of this.units) {
+      if (unit.civId !== 0 && vis[unit.row]?.[unit.col] === 2) {
+        this.establishContact?.(0, unit.civId);
+      }
+    }
+    for (const city of this.cities) {
+      if (city.civId !== 0 && vis[city.row]?.[city.col] === 2) {
+        this.establishContact?.(0, city.civId);
+      }
+    }
   };
 
   GameState.prototype._landTiles = function() {

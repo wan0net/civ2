@@ -80,6 +80,8 @@ export class AudioManager {
     this._musicTrackIdx = 0;
     /** @type {boolean} */
     this._musicReady = false;
+    this._musicRetryTimer = null;
+    this._musicFailureCount = 0;
   }
 
    _loadSettings() {
@@ -267,7 +269,11 @@ export class AudioManager {
    * @param {number} [fadeOut=1000] fade-out duration in ms
    */
   stopMusic(fadeOut = 1000) {
-    if (!this._musicSource || !this._musicGain || !this._ctx) return;
+    if (this._musicAudio) this._stopMusic();
+    if (!this._musicSource || !this._musicGain || !this._ctx) {
+      this._currentMusic = null;
+      return;
+    }
 
     const gain   = this._musicGain;
     const source = this._musicSource;
@@ -287,7 +293,7 @@ export class AudioManager {
   }
 
   /** @returns {boolean} */
-  get musicPlaying() { return this._currentMusic !== null; }
+  get musicPlaying() { return this._currentMusic !== null || this._musicAudio !== null; }
   /** @returns {string|null} */
   get currentTrackName() { return this._currentMusic; }
 
@@ -336,6 +342,7 @@ export class AudioManager {
 
     audio.addEventListener('canplaythrough', () => {
       if (this._musicAudio !== audio) return;
+      this._musicFailureCount = 0;
       audio.play().catch(err => {
         console.warn('AudioManager: failed to play track:', err.message);
       });
@@ -351,11 +358,17 @@ export class AudioManager {
     });
 
     audio.addEventListener('error', (e) => {
+      if (this._musicAudio !== audio) return;
       console.warn(`AudioManager: error playing ${trackName}.mp3`, e);
       this._musicTrackIdx++;
       const tracks = MUSIC_TRACKS[this._currentEra];
-      if (tracks) {
-        setTimeout(() => this._playMusicTrack(tracks[this._musicTrackIdx % tracks.length]), 1000);
+      this._musicFailureCount++;
+      if (tracks && this._musicFailureCount < tracks.length) {
+        clearTimeout(this._musicRetryTimer);
+        this._musicRetryTimer = setTimeout(() => {
+          this._musicRetryTimer = null;
+          if (this._musicAudio === audio) this._playMusicTrack(tracks[this._musicTrackIdx % tracks.length]);
+        }, 1000);
       }
     });
 
@@ -364,10 +377,14 @@ export class AudioManager {
   }
 
   _stopMusic() {
+    clearTimeout(this._musicRetryTimer);
+    this._musicRetryTimer = null;
     if (this._musicAudio) {
-      this._musicAudio.pause();
-      this._musicAudio.src = '';
+      const audio = this._musicAudio;
       this._musicAudio = null;
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
     }
   }
 
