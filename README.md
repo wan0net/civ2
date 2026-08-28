@@ -9,6 +9,8 @@ preserving the original MGE interface, rules, proportions, music, and movies.
 > use Civilization II Multiplayer Gold Edition before opening the game. The
 > hosted version presents this attestation before any MGE-derived asset loads.
 
+[![Civilization II browser recreation project page](docs/screenshots/project-page.jpg)](https://wan0.net/civ2/)
+
 ## Play
 
 Visit the [project site](https://wan0.net/civ2/) and choose **Open the
@@ -27,6 +29,8 @@ ownership attestation locally in your browser.
 
 This is a playable public beta, not a claim that every undocumented MGE edge
 case has been reproduced.
+
+![Reconstructed Civilization II MGE title screen](docs/screenshots/title-screen.jpg)
 
 ## Local development
 

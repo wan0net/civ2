@@ -1,27 +1,27 @@
 # Changelog
 
-## Public beta release preparation
-
-- Added a standalone project landing page and a separate game entry point.
-- Added a mandatory ownership attestation before MGE-derived assets or the game
-  engine load; acceptance remains local to the visitor's browser.
-- Licensed original project code and documentation under BSD-3-Clause while
-  explicitly excluding original Civilization II assets from that licence.
-- Replaced the 665 MiB development asset dump with a 187 MiB runtime allow-list
-  and removed original executables, DLLs, saves, logs, source AVIs, redundant
-  Pedia material, screenshots, and sprite-comparison workspaces.
-- Removed the browser's runtime dependency on the original `Tiles.dll`.
-- Made asset URLs work from both the development root and GitHub Pages `/civ2/`.
-- Added public-tree safety validation, contributor/security/provenance/release
-  documentation, CI, and GitHub Pages deployment workflows.
-
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-28
+
 ### Added
+
+- Added a standalone project landing page and a separate game entry point.
+- Added a mandatory ownership attestation before MGE-derived assets or the game
+  engine load; acceptance remains local to the visitor's browser.
+- Licensed original project code and documentation under BSD-3-Clause while
+  explicitly excluding original Civilization II assets from that licence.
+- Replaced the 665 MiB development asset dump with a 185 MiB runtime allow-list
+  and removed original executables, DLLs, saves, logs, source AVIs, redundant
+  Pedia material, screenshots, and sprite-comparison workspaces.
+- Removed the browser's runtime dependency on the original `Tiles.dll`.
+- Made asset URLs work from both the development root and GitHub Pages `/civ2/`.
+- Added public-tree safety validation, contributor/security/provenance/release
+  documentation, CI, and GitHub Pages deployment workflows.
 - Restored the full Civilopedia menu indexes for advances, improvements, wonders, units, governments, terrain, and game concepts, plus separate Info and prerequisite-tree views backed by the original PEDIA files
 - **Full zoom system** — 4 zoom levels (Z/X keys, Ctrl+Z, Shift+Z, etc.) with dynamic tile scaling
 - **View Pieces mode** — V key toggle to disable unit selection for map viewing
@@ -61,7 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Scenario events.txt parser and executor — 7 triggers (TURN, TURNINTERVAL, SCENARIOLOADED, RANDOMTURN, UNITKILLED, CITYTAKEN, RECEIVEDTECHNOLOGY) and 6 actions (TEXT, CREATEUNIT, CHANGEMONEY, GIVETECHNOLOGY, MAKEAGGRESSION, CHANGETERRAIN) with JUSTONCE modifier
 - Barbarian ocean transport raids — Trireme with 1-2 warriors targets coastal cities after turn 20 (20% chance)
 - Title screen "Begin Scenario" button enabled with file picker and civ chooser
-- Playwright coverage expanded to 241 browser tests
+- Playwright coverage expanded to 251 browser tests
 
 ### Changed
 - The opening movie now preserves its full ultrawide frame instead of cropping it to the browser viewport; audible autoplay falls back to muted playback when required by browser policy
