@@ -2068,9 +2068,8 @@ export class GameState {
         } else {
           city.shields += yields.shields;
           const cost = this._productionCost(city.production);
-          if (city.shields >= cost) {
+          if (city.shields >= cost && this._completeProduction(city)) {
             city.shields = Math.max(0, city.shields - cost);
-            this._completeProduction(city);
           }
         }
       }
@@ -2532,7 +2531,9 @@ export class GameState {
     if (type === 'unit') {
       let spawnCol = city.col, spawnRow = city.row;
       const unitData = UNITS[id];
-      if (unitData.role === 5 && city.size <= 1) return;
+      // MGE keeps Settlers/Engineers in the production chooser at size 1,
+      // but holds the completed item (and its shields) until the city grows.
+      if (unitData.role === 5 && city.size <= 1) return false;
       if (unitData.domain === 2) {
         // Sea units must spawn on an adjacent ocean tile (coastal city)
         const oceanAdj = neighbours(city.col, city.row, this.mapCols).find(n => {
@@ -2670,6 +2671,7 @@ export class GameState {
     } else {
       city.production = null;
     }
+    return true;
   }
 
   // ─── Research ──────────────────────────────────────────────────────────────
@@ -2723,8 +2725,6 @@ export class GameState {
       if (u.obsoletedBy !== -1 && civ.advances.has(u.obsoletedBy)) continue;
       // Nuclear Missile (id=45) requires Manhattan Project (62) to have been built by any civ
       if (u.id === 45 && !this._manhattanBuilt) continue;
-      // Settlers/Engineers (role 5) require city size > 1 (axx0 UnitProductionOrder.cs:28-31)
-      if (u.role === 5 && city.size <= 1) continue;
       items.push({ type: 'unit', id: u.id, name: u.name, cost: u.cost * 10 });
     }
 

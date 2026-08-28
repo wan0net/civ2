@@ -53,7 +53,7 @@ src/
     AudioManager.js / sounds.js
 public/                     # browser runtime assets only
 tests/
-  game.spec.js / site.spec.js # 251 Playwright browser tests
+  game.spec.js / site.spec.js # 261 Playwright browser tests
 ```
 
 See [docs/reference-data.md](docs/reference-data.md) for sprite coordinates, wonder IDs, city screen layout, and map file format.

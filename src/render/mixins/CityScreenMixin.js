@@ -973,21 +973,29 @@ export function applyCityScreenMixin(MapRenderer) {
       return;
     }
 
-    // Game.txt @PRODUCTION: width=440, listbox (13 rows), Auto + Help;
-    // PopupBoxReader appends the standard OK button.
+    // Game.txt @PRODUCTION: width=440, listbox, Auto + Help; PopupBoxReader
+    // appends OK. MGE displays this as a fixed-size top-level dialog rather
+    // than shrinking it to the number of currently available items. The
+    // virtual geometry below is measured from the original 680x268 dialog.
     const items = this.gameState.availableProduction(city);
     if (!items.some(item => this._cityScreenProductionSelection?.type === item.type && this._cityScreenProductionSelection?.id === item.id)) {
       this._cityScreenProductionSelection = prod ?? items[0] ?? null;
     }
-    const rowH = 23;
-    const rowsVis = Math.max(1, Math.min(13, items.length));
-    const OPW = 440;
-    const OPH = 34 + rowsVis * rowH + 34;
+    const rowH = 19;
+    const OPW = 544;
+    const OPH = 214;
+    const listTop = 28;
+    const listH = 152;
+    const rowsVis = Math.max(1, Math.min(8, Math.floor(listH / rowH)));
     const OPX = (640 - OPW) / 2;
     const OPY = (446 - OPH) / 2;
     this._cityProductionDialogRect = vfr(OPX, OPY, OPW, OPH);
-    ctx.fillStyle = '#9a9a9a';
-    vfl(OPX, OPY, OPW, OPH);
+    if (this._innerWallpaper) {
+      this._tilePattern(ctx, this._innerWallpaper, vx(OPX), vy(OPY), vs(OPW), vs(OPH));
+    } else {
+      ctx.fillStyle = '#c0c0c0';
+      vfl(OPX, OPY, OPW, OPH);
+    }
     const bColors = ['#e3e3e3', '#696969', '#ffffff', '#a0a0a0', '#f0f0f0', '#dfdfdf', '#434343'];
     const bvx = x => vx(OPX + x), bvy = y => vy(OPY + y);
     const bvr = x => vx(OPX + OPW - x), bvb = y => vy(OPY + OPH - y);
@@ -1007,16 +1015,29 @@ export function applyCityScreenMixin(MapRenderer) {
       ctx.stroke();
     });
 
-    ctx.fillStyle = '#8a8a8a';
-    vfl(OPX + 5, OPY + 31, OPW - 10, rowsVis * rowH);
-    ctx.font = vfont(13);
+    // MGE listbox: flat silver field with a thin sunken edge. Empty space is
+    // retained below short early-game build lists.
+    ctx.fillStyle = '#c0c0c0';
+    vfl(OPX + 5, OPY + listTop, OPW - 10, listH);
+    ctx.strokeStyle = '#404040';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(vx(OPX + 5) + 0.5, vy(OPY + listTop) + 0.5,
+      vs(OPW - 10) - 1, vs(listH) - 1);
+    ctx.strokeStyle = '#ffffff';
+    ctx.strokeRect(vx(OPX + 6) + 0.5, vy(OPY + listTop + 1) + 0.5,
+      vs(OPW - 12) - 1, vs(listH - 2) - 1);
+
+    // Original embossed Times title (not the gold city-screen heading).
+    ctx.font = `bold ${vs(15)}px ${FONT_TIMES}`;
     ctx.textAlign = 'center';
-    shc(`What shall we build in ${city.name}?`, OPX + OPW / 2, OPY + 22, CLR.GOLD, C_HDR_SH);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`What shall we build in ${city.name}?`, vx(OPX + OPW / 2) + 1, vy(OPY + 21) + 1);
+    ctx.fillStyle = '#3f3f3f';
+    ctx.fillText(`What shall we build in ${city.name}?`, vx(OPX + OPW / 2), vy(OPY + 21));
     ctx.textAlign = 'left';
     this._cityScreenQueueModeRect = null;
     this._cityScreenTabRects = [];
-    const listY = OPY + 31;
-    const listH = rowsVis * rowH;
+    const listY = OPY + listTop;
     const scroll2 = Math.max(0, Math.min(this._cityScreenScroll, Math.max(0, items.length - rowsVis)));
     this._cityScreenScroll = scroll2;
     this._cityScreenItemRects = [];
@@ -1024,38 +1045,39 @@ export function applyCityScreenMixin(MapRenderer) {
       const item = items[i + scroll2];
       const iy = listY + i * rowH;
       const isSelected = this._cityScreenProductionSelection?.type === item.type && this._cityScreenProductionSelection?.id === item.id;
-      ctx.fillStyle = isSelected ? '#000080' : '#878787';
-      vfl(OPX + 6, iy, OPW - 12, rowH - 1);
+      ctx.fillStyle = isSelected ? '#808080' : '#c0c0c0';
+      vfl(OPX + 6, iy, OPW - 12, rowH);
       try {
         if (item.type === 'unit') {
           const spr = this.sprites.getSprite('units', Math.floor(item.id / 9), item.id % 9);
-          if (spr) ctx.drawImage(spr, vx(OPX + 8), vy(iy), vs(30), vs(22));
+          const imageShift = i % 2 === 1 ? 16 : 0;
+          if (spr) ctx.drawImage(spr, vx(OPX + 8 + imageShift), vy(iy), vs(30), vs(19));
         } else {
           const wonder = item.id >= 39;
           const index = wonder ? item.id - 39 : item.id - 1;
           const cols = wonder ? 7 : 8;
           const spr = this.sprites.getRegionSprite('icons', 343 + (index % cols) * 37,
             (wonder ? 106 : 1) + Math.floor(index / cols) * 21, 36, 20);
-          if (spr) ctx.drawImage(spr, vx(OPX + 8), vy(iy + 1), vs(36), vs(20));
+          if (spr) ctx.drawImage(spr, vx(OPX + 8), vy(iy + 1), vs(36), vs(17));
         }
       } catch (e) {
         _warnOnce(`production-icon-${item.type}-${item.id}`, `Production icon unavailable: ${e.message}`);
       }
-      ctx.font = vtfont(12);
+      ctx.font = `bold ${vs(13)}px ${FONT_TIMES}`;
       ctx.fillStyle = isSelected ? '#ffffff' : '#000000';
-      vtx(item.name, OPX + 49, iy + 16);
+      vtx(item.name, OPX + 70, iy + 15);
       const perTurn = Math.max(1, this.gameState.cityYields(city).shields);
       const turns = Math.max(1, Math.ceil(Math.max(0, item.cost - city.shields) / perTurn));
       const unit = item.type === 'unit' ? UNITS[item.id] : null;
       const facts = unit
         ? `(${turns} Turns, ADM: ${unit.attack}/${unit.defense}/${unit.move} HP: ${unit.hp}/${unit.fp})`
         : `(${turns} Turns)`;
-      ctx.font = vtfont(10);
+      ctx.font = `bold ${vs(11)}px ${FONT_TIMES}`;
       ctx.fillStyle = isSelected ? '#ffffff' : '#222222';
       ctx.textAlign = 'right';
-      ctx.fillText(facts, vx(OPX + OPW - 11), vy(iy + 16));
+      ctx.fillText(facts, vx(OPX + OPW - 9), vy(iy + 15));
       ctx.textAlign = 'left';
-      this._cityScreenItemRects.push({ ...vfr(OPX + 6, iy, OPW - 12, rowH - 1), item });
+      this._cityScreenItemRects.push({ ...vfr(OPX + 6, iy, OPW - 12, rowH), item });
     }
 
     if (items.length > rowsVis) {

@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-28
+
+### Added
+
+- Added **Game → Report Bug...**, which creates one ZIP containing a PNG of the
+  current game view, a restorable game-state snapshot, renderer/view state,
+  browser diagnostics, and handling instructions.
+- Added Download, system Share/Email, email-draft fallback, and prefilled GitHub
+  issue routes for bug reports without storing GitHub credentials.
+- Added a responsive in-game preview to the project landing page and refreshed
+  its gameplay and project-page screenshots from the corrected renderer.
+
+### Changed
+
+- Restored the MGE-sized city production chooser, original silver listbox,
+  Times headings, row geometry, unit/building icons, and fixed button layout.
+- Size-one cities continue to offer Settlers and Engineers, matching MGE, but
+  retain the completed production and shields until the city grows.
+- Active units in cities now flash at the original 200ms cadence over the city
+  and garrison flag instead of using a modern selection ring.
+- Expanded browser coverage to 261 Playwright tests.
+
+### Fixed
+
+- Terrain and fog masks now respect transparent chroma-key pixels, removing the
+  black dotted diamonds that appeared around every map square.
+- Reveal-map mode no longer applies fog-edge dithering, and its minimap now
+  shows the complete terrain, including blue ocean tiles, without fog.
+- Corrected minimap terrain lookup so ocean and land use their intended MGE
+  colours in normal play as well as reveal mode.
+- Research chooser headings now widen the compact MGE dialog only when needed,
+  preventing “What discovery shall our wise men pursue?” from overflowing.
+- City garrison flags use the original marker offset and active units visibly
+  animate over occupied cities.
+
 ## [0.6.0] - 2026-08-28
 
 ### Added

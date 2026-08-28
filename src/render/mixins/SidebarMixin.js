@@ -80,17 +80,17 @@ export function applySidebarMixin(MapRenderer) {
     } else {
       for (let row = 0; row < this.mapRows; row++) {
         for (let col = 0; col < this.mapCols; col++) {
-          const v = vis[row][col];
+          const v = this._showHiddenTerrain ? 2 : vis[row][col];
           if (v === 0) continue;
           const t = tiles[row][col];
-          const baseColor = t.terrain?.id === 7 ? CLR.MM_OCEAN : CLR.MM_LAND;
+          const baseColor = t?.id === 7 ? CLR.MM_OCEAN : CLR.MM_LAND;
           ctx.fillStyle = v === 2 ? baseColor : this._darkenHex(baseColor, 0.5);
           const px = mapX + col * mmTileW + (row % 2 ? Math.floor(mmTileW / 2) : 0);
           ctx.fillRect(px, mapY + row * mmTileH, mmTileW, mmTileH);
         }
       }
       for (const city of gs.cities) {
-        const v = vis[city.row]?.[city.col] ?? 0;
+        const v = this._showHiddenTerrain ? 2 : (vis[city.row]?.[city.col] ?? 0);
         if (v === 0) continue;
         const civ = gs.civs[city.civId];
         const color = CIV_COLORS[civ?.data?.color ?? 0];
@@ -478,16 +478,21 @@ export function applySidebarMixin(MapRenderer) {
         const mapCol  = ((Math.floor(mapColF) % mapCols) + mapCols) % mapCols;
 
         const tileKey = clampedRow * mapCols + mapCol;
+        const visibility = this._showHiddenTerrain
+          ? 2
+          : (gs._visibility[clampedRow]?.[mapCol] ?? 0);
         let r, g, b;
 
-        if (citySet.has(tileKey)) {
+        if (visibility === 0) {
+          r = 0; g = 0; b = 0;
+        } else if (citySet.has(tileKey)) {
           const hex = cityColorMap.get(tileKey) || '#ffffff';
           r = parseInt(hex.slice(1, 3), 16);
           g = parseInt(hex.slice(3, 5), 16);
           b = parseInt(hex.slice(5, 7), 16);
         } else {
           const tile = tiles[clampedRow]?.[mapCol];
-          const terrainId = tile?.terrain?.id ?? 7;
+          const terrainId = tile?.id ?? 7;
           if (terrainId === 7) {
             r = 0; g = 0; b = 128;
           } else if (terrainId === 0) {
@@ -499,7 +504,8 @@ export function applySidebarMixin(MapRenderer) {
           }
         }
 
-        const shade = 0.6 + 0.4 * Math.cos((localX - spanW / 2) / (spanW / 2));
+        const exploredShade = visibility === 1 ? 0.5 : 1;
+        const shade = exploredShade * (0.6 + 0.4 * Math.cos((localX - spanW / 2) / (spanW / 2)));
         r = Math.round(r * shade);
         g = Math.round(g * shade);
         b = Math.round(b * shade);

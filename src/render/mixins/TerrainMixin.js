@@ -191,9 +191,11 @@ export function applyTerrainMixin(MapRenderer) {
       // Convert: non-transparent dark pixels → opaque white (mask pass-through)
       // Everything else → transparent (mask blocked)
       for (let p = 0; p < d.length; p += 4) {
-        const r = d[p], g = d[p+1], b = d[p+2];
-        // Dark pixels (near-black) = dither dots where neighbour shows
-        const isDark = r < 80 && g < 80 && b < 80;
+        const r = d[p], g = d[p+1], b = d[p+2], a = d[p+3];
+        // Dark, opaque pixels are the dither dots where the neighbour shows.
+        // SpriteManager has already keyed the mask's magenta and grey pixels
+        // to transparent black, so alpha must participate in this test.
+        const isDark = a > 0 && r < 80 && g < 80 && b < 80;
         if (isDark) {
           d[p] = 255; d[p+1] = 255; d[p+2] = 255; d[p+3] = 255;
         } else {
@@ -386,6 +388,11 @@ export function applyTerrainMixin(MapRenderer) {
    * the only visual cue is a dithered edge at boundaries with unexplored areas.
    */
   MapRenderer.prototype._drawFogDither = function(ctx, x, y, col, row) {
+    // axx0 MapImage.cs suppresses fog-edge dithering when MapRevealed is set.
+    // Otherwise every normally hidden tile sees four hidden neighbours and
+    // the revealed map becomes a distracting grid of black dotted diamonds.
+    if (this._showHiddenTerrain) return;
+
     const vis = this.gameState._visibility;
     const o = row % 2;
     // Direct (diagonal) neighbours: NE, SE, SW, NW — matching axx0's directNeighbours order
@@ -423,8 +430,12 @@ export function applyTerrainMixin(MapRenderer) {
           const maskData = maskCtx.getImageData(0, 0, hw, hh);
           const d = maskData.data;
           for (let p = 0; p < d.length; p += 4) {
-            const r = d[p], g = d[p+1], b = d[p+2];
-            const isDark = r < 80 && g < 80 && b < 80;
+            const r = d[p], g = d[p+1], b = d[p+2], a = d[p+3];
+            // SpriteManager has already chroma-keyed the magenta/grey guide
+            // pixels. Canvas reports those transparent pixels as black, so
+            // alpha must participate in the test or the whole quadrant turns
+            // into fog instead of retaining the sparse MGE dither dots.
+            const isDark = a > 0 && r < 80 && g < 80 && b < 80;
             d[p] = 0; d[p+1] = 0; d[p+2] = 0;
             d[p+3] = isDark ? 128 : 0;
           }
@@ -775,13 +786,14 @@ export function applyTerrainMixin(MapRenderer) {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'alphabetic';
 
-      // Flag sprite if units are present in the city (axx0 Draw.City.cs:122-129)
-      // axx0: dest.X + (flagLoc.X - 3).ZoomScale(zoom)
+      // Flag sprite if units are present in the city.  The marker is the
+      // flag's left edge; only its Y position is raised by flagHeight - 5
+      // (axx0 BaseGameView.cs:244-247).
       const unitsPresent = gs.unitsAt(city.col, city.row).length > 0;
       if (unitsPresent && this._civFlagSprites?.[civColorIdx]) {
         const flagSpr = this._civFlagSprites[civColorIdx];
         ctx.drawImage(flagSpr,
-          destX + (flagLoc.x - 3) * scale,
+          destX + flagLoc.x * scale,
           destY + (flagLoc.y - 17) * scale,
           14 * scale, 22 * scale);
       }
@@ -838,8 +850,8 @@ export function applyTerrainMixin(MapRenderer) {
     const isActive = unit === this.gameState.activeUnit;
     const isEnemy  = unit.civId !== 0;
 
-    // Active unit blinks: 500ms on / 500ms off
-    const blinkVisible = !isActive || Math.floor(this._blinkTime / 500) % 2 === 0;
+    // Original MGE waiting animation: 200ms on / 200ms off.
+    const blinkVisible = !isActive || Math.floor(this._blinkTime / 200) % 2 === 0;
 
     if (spritesReady) {
       try {
@@ -869,7 +881,6 @@ export function applyTerrainMixin(MapRenderer) {
         }
 
          if (unit.buildTask) this._drawBuildProgress(ctx, unit, x, y);
-         if (isActive) this._drawSelectionRing(ctx, x, y);
          return;
        } catch (e) {
          _warnOnce('unit:' + unit.id, 'Unit sprite unavailable: ' + e.message);
