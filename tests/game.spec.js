@@ -1418,13 +1418,11 @@ test.describe('Bug reports', () => {
       const screen = window.__civ2.mapScreen;
       const canvas = document.getElementById('game-canvas');
 
-      // Render the Game dropdown to prove the feature is exposed as a genuine
-      // menu item, then close it before capturing the underlying game scene.
+      // Render and click the genuine Game-menu item. The click itself must be
+      // present in the diagnostic traceback while the menu stays out of the PNG.
       screen._openMenu = 0;
       screen.render(canvas.getContext('2d'), canvas.width, canvas.height);
       const menuItem = screen._menuItemRects.find(item => item.action === 'game_reportbug');
-      screen._openMenu = null;
-      screen._menuItemRects = [];
 
       screen.viewX = 96;
       screen.viewY = 48;
@@ -1437,7 +1435,7 @@ test.describe('Bug reports', () => {
         reportDrawsDuringCapture++;
         return originalDraw.apply(this, args);
       };
-      screen._executeMenuAction(menuItem.action);
+      screen.handleRawClick(menuItem.x + menuItem.w / 2, menuItem.y + menuItem.h / 2, canvas.width, canvas.height);
       const drawsBeforeNextTask = reportDrawsDuringCapture;
       const file = await screen._bugReportDialog.promise;
       screen._drawBugReportDialog = originalDraw;
@@ -1478,6 +1476,7 @@ test.describe('Bug reports', () => {
         restoredTurn: restored.turn,
         capturedTurn: stateBefore.turn,
         rendererState: report.rendererState,
+        recentClicks: report.recentClicks,
         reportFormat: report.format,
         drawsBeforeNextTask,
       };
@@ -1497,8 +1496,62 @@ test.describe('Bug reports', () => {
     expect(result.stateMatches).toBe(true);
     expect(result.restoredTurn).toBe(result.capturedTurn);
     expect(result.rendererState).toMatchObject({ viewX: 96, viewY: 48, zoomLevel: 2 });
+    expect(result.recentClicks.at(-1)).toMatchObject({
+      kind: 'click',
+      screenBefore: { name: 'menu', menu: 'Game' },
+      screenAfter: { name: 'bug-report', status: 'capturing' },
+      action: { source: 'menu', id: 'game_reportbug' },
+    });
     expect(result.reportFormat).toBe('civ2-web-bug-report');
     expect(result.drawsBeforeNextTask, 'report UI must not appear inside its own screenshot').toBe(0);
+  });
+
+  test('click traceback keeps only ten screen transitions and excludes typed city names', async ({ page }) => {
+    const result = await page.evaluate(async () => {
+      const screen = window.__civ2.mapScreen;
+      const canvas = document.getElementById('game-canvas');
+      screen._initInteractionTrace();
+
+      // Safe title-bar clicks exercise the real canvas click entry point without
+      // changing game state.
+      for (let i = 0; i < 12; i++) {
+        screen.handleRawClick(20 + i, 5, canvas.width, canvas.height);
+        await Promise.resolve();
+      }
+
+      // A city name is user-entered text and must never be copied into the trace.
+      const privateName = 'PRIVATE CITY NAME MUST NOT LEAK';
+      screen._cityNamingDialog = { name: privateName, cursor: privateName.length };
+      screen.handleRawClick(40, 5, canvas.width, canvas.height);
+      await Promise.resolve();
+      screen._cityNamingDialog = null;
+
+      // Include one ordinary map context click to verify resolved tile
+      // coordinates and right-click coverage.
+      screen.gameState.activeCivIdx = 0;
+      screen.handleRightClick(600, 400, canvas.width, canvas.height);
+      await Promise.resolve();
+
+      const trace = screen._interactionTraceForReport();
+      return {
+        trace,
+        serialized: JSON.stringify(trace),
+        privateName,
+      };
+    });
+
+    expect(result.trace).toHaveLength(10);
+    expect(result.trace[0].sequence).toBe(5);
+    expect(result.trace.at(-1).sequence).toBe(14);
+    expect(result.trace.at(-2).screenBefore).toEqual({ name: 'city-naming' });
+    expect(result.trace.at(-1).mapTile).toEqual({
+      col: expect.any(Number),
+      row: expect.any(Number),
+    });
+    expect(result.trace.at(-1).kind).toBe('right-click');
+    expect(result.trace.at(-1).screenBefore).toEqual({ name: 'map' });
+    expect(result.trace.at(-1).screenAfter.name).toBe('tile-information');
+    expect(result.serialized).not.toContain(result.privateName);
   });
 
   test('Share / Email passes the ZIP to the system share sheet and GitHub opens a prepared issue', async ({ page }) => {

@@ -56,7 +56,11 @@ npm run preview:pages
 
 Choose **Game → Report Bug...** inside a running game. The app creates one ZIP
 containing a screenshot, a restorable game-state snapshot, the current camera
-and open-screen state, and browser/viewport diagnostics.
+and open-screen state, browser/viewport diagnostics, and a local traceback of
+the last ten canvas clicks. Each traceback entry records the screen before and
+after the click, pointer and map-tile coordinates where applicable, the active
+unit/city context, and resolved menu action where available. It does not record
+typed city names or transmit anything automatically.
 
 - **Download ZIP** saves the report locally.
 - **Share / Email** uses the browser or operating system share sheet when file

@@ -26,6 +26,7 @@ import { applyCityScreenMixin } from './mixins/CityScreenMixin.js';
 import { applySidebarMixin } from './mixins/SidebarMixin.js';
 import { applyTerrainMixin } from './mixins/TerrainMixin.js';
 import { applyBugReportMixin } from './mixins/BugReportMixin.js';
+import { applyInteractionTraceMixin } from './mixins/InteractionTraceMixin.js';
 import { GameState }       from '../engine/GameState.js';
 import { Civ2SaveLoader }  from '../engine/Civ2SaveLoader.js';
 import { MapLoader }       from '../engine/MapLoader.js';
@@ -189,6 +190,7 @@ export class MapRenderer {
      this.sprites   = spriteManager;
      this.gameState = gameState;
      this.audio     = audio;
+     this._initInteractionTrace();
 
      this.mapCols = gameState.mapCols;
      this.mapRows = gameState.mapRows;
@@ -1414,6 +1416,9 @@ export class MapRenderer {
    * Right-click on the map: show tile info popup (Civ2 "View Piece").
    */
   handleRightClick(px, py, canvasW, canvasH) {
+    const clickTrace = this._beginClickTrace(px, py, canvasW, canvasH, 'right-click');
+    queueMicrotask(() => this._finishClickTrace(clickTrace));
+
     if (this._titleScreen || this._wizard || this._cityScreen) return;
     if (this.gameState.gameOver) return;
 
@@ -1435,6 +1440,9 @@ export class MapRenderer {
    * mini-map, or tile game-logic as appropriate.
    */
   handleRawClick(px, py, canvasW, canvasH) {
+    const clickTrace = this._beginClickTrace(px, py, canvasW, canvasH);
+    queueMicrotask(() => this._finishClickTrace(clickTrace));
+
     // ── Title screen takes highest priority ───────────────────────────────────
     if (this._titleScreen) {
       if (this._hallOfFame) { this._handleHallOfFameClick(px, py); return; }
@@ -2000,6 +2008,7 @@ export class MapRenderer {
   }
 
   _executeUnitMenuAction(id) {
+    this._annotateCurrentClickTrace('unit-menu', id);
     const gs   = this.gameState;
     const unit = this._unitMenu.unit;
     this._unitMenu         = null;
@@ -3143,6 +3152,7 @@ export class MapRenderer {
   }
 
   _executeMenuAction(action) {
+    this._annotateCurrentClickTrace('menu', action);
     if (this._executeGameAction(action)) return;
     if (this._executeViewAction(action)) return;
     if (this._executeKingdomAction(action)) return;
@@ -5090,4 +5100,5 @@ applyWizardMixin(MapRenderer);
 applyDialogsMixin(MapRenderer);
 applyAdvisorsMixin(MapRenderer);
 applyInfoScreensMixin(MapRenderer);
+applyInteractionTraceMixin(MapRenderer);
 applyBugReportMixin(MapRenderer);

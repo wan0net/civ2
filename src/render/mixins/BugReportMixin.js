@@ -95,13 +95,14 @@ export function applyBugReportMixin(MapRenderer) {
         mapRows: gameState.mapRows,
       },
       rendererState,
+      recentClicks: this._interactionTraceForReport(),
     };
     const instructions = [
       'Civilization II Browser Recreation - Bug Report',
       '',
       'screenshot.png    Exact visible state when Report Bug was chosen.',
       'game-state.json   Full restorable GameState.toSaveData() snapshot.',
-      'report.json       View/camera state, browser details, and summary.',
+      'report.json       View/camera state, browser details, summary, and last ten clicks.',
       '',
       'Attach this ZIP to a GitHub issue or email. Do not unpack it first.',
       'The screenshot may contain original MGE artwork; share only for bug diagnosis.',
@@ -221,7 +222,7 @@ export function applyBugReportMixin(MapRenderer) {
     const dialog = this._bugReportDialog;
     if (!dialog) return;
     const PW = Math.min(680, canvasW - 40);
-    const PH = 250;
+    const PH = 272;
     const px = Math.round((canvasW - PW) / 2);
     const py = Math.round((canvasH - PH) / 2);
     ctx.fillStyle = 'rgba(0,0,0,0.48)';
@@ -234,15 +235,16 @@ export function applyBugReportMixin(MapRenderer) {
       'Screenshot of the exact visible game',
       'Full restorable game-state snapshot',
       'Camera, zoom, open-screen, browser, and viewport details',
+      'Last ten canvas clicks, including screen and resolved action',
     ];
     lines.forEach((line, index) => this._panelText(ctx, `\u2022 ${line}`, px + 38, py + 82 + index * 22));
     ctx.font = FONT.BODY_SMALL;
     this._panelText(ctx, 'GitHub opens a prepared issue. Share / Email uses system sharing or opens an email draft.',
-      px + 24, py + 156);
+      px + 24, py + 178);
 
     ctx.font = FONT.SMALL_BOLD;
     ctx.fillStyle = dialog.status === 'error' ? '#a00000' : '#000000';
-    ctx.fillText(dialog.message, px + 24, py + 184, PW - 48);
+    ctx.fillText(dialog.message, px + 24, py + 206, PW - 48);
 
     const labels = ['Download ZIP', 'Share / Email', 'GitHub Issue', 'Close'];
     const gap = 10;
@@ -268,6 +270,7 @@ export function applyBugReportMixin(MapRenderer) {
     if (!dialog) return;
     const hit = dialog.rects.find(rect => px >= rect.x && px < rect.x + rect.w && py >= rect.y && py < rect.y + rect.h);
     if (!hit) return;
+    this._annotateCurrentClickTrace('bug-report', hit.action);
     if (hit.action === 'close') {
       this._bugReportDialog = null;
       return;
